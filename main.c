@@ -378,25 +378,17 @@ void drawSquare(double x, double y, double z, double w, double h, int col_code) 
 
 	for (int i_x = new_x1; i_x < new_x2; i_x++) {
 		for (int i_y = new_y1; i_y < new_y2; i_y++) {
-			move_cursor_translate(i_x, i_y);
-			// printf("#");
-			printf("\033[%dm#\033[0m\n", col_code);
-			fflush(stdout); // Not printing without this; when NUM_PARTICLES is 1
-			pthread_mutex_unlock(&mutex);
+			if (i_x > ((Term_Conf.cols / 2) * -1) && i_x < (Term_Conf.cols / 2) && i_y > ((Term_Conf.rows / 2) * -1) && i_y <= (Term_Conf.rows / 2)) {
+			
+				pthread_mutex_lock(&mutex);
+				move_cursor_translate(i_x, i_y);
+				// printf("#");
+				printf("\033[%dm#\033[0m\n", col_code);
+				fflush(stdout); // Not printing without this; when NUM_PARTICLES is 1
+				pthread_mutex_unlock(&mutex);
+			}
 		}
 	}
-
-	// for (int i_x = x; i_x < x + w; i_x++) {
-	// 	for (int i_y = y; i_y < y + h; i_y++) {
-	// 		double new_x = (i_x * D_DIST) / z;
-	// 		double new_y = (i_y * D_DIST) / z;
-	//
-	// 		move_cursor_translate(new_x, new_y);
-	// 		printf("#");
-	// 		fflush(stdout); // Not printing without this; when NUM_PARTICLES is 1
-	// 		pthread_mutex_unlock(&mutex);
-	// 	}
-	// }
 }
 
 void* animation(void* thread_id) {
@@ -418,21 +410,6 @@ void* animation(void* thread_id) {
 		usleep(200000);
 		clear_screen();
 
-		// for (int i = 0; i < 4; i++) {
-		// 		Point3D* p = &sq1[i];
-		// 		pthread_mutex_lock(&mutex);
-		//
-		// 		double new_x, new_y;
-		// 		new_x = (p->x * d_dist) / p->z;
-		// 		new_y = (p->y * d_dist) / p->z;
-		//
-		// 		move_cursor_NO_REASSGN(new_x / 2.0 + (Term_Conf.cols / 2.0), new_y / 2.0 + (Term_Conf.rows / 2.0));
-		// 		printf("#");
-		// 		fflush(stdout); // Not printing without this; when NUM_PARTICLES is 1
-		// 		pthread_mutex_unlock(&mutex);
-		// }
-
-
 		pthread_mutex_lock(&mutex);
 		move_cursor_NO_REASSGN(1, 1);
 		printf("WIDTH: %d; HEIGHT: %d", Term_Conf.cols, Term_Conf.rows);
@@ -448,8 +425,8 @@ void* animation(void* thread_id) {
 		drawSquare(-10, -5, 10, 5, 10, 32);
 		drawSquare(10, -5, 10, 5, 10, 32);
 
-		drawSquare(-10, -5, 5, 5, 10, 31);
-		drawSquare(10, -5, 5, 5, 10, 31);
+		drawSquare(-10, -5, 5, 2, 10, 31);
+		drawSquare(10, -5, 5, 2, 10, 31);
 
 	}
 
