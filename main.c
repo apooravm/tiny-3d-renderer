@@ -17,6 +17,10 @@ pthread_t threads[NUM_THREADS];
 pthread_mutex_t mutex;
 
 int D_DIST = 1;
+int ASPECT_RATIO;
+double FOV_ANGLE = 90;
+double FOV;
+double Z_NORM;
 
 void init_thread() {
 	pthread_t threads[NUM_THREADS];
@@ -42,6 +46,9 @@ void init_window() {
 
 	Term_Conf.cols = cols;
 	Term_Conf.rows = rows;
+
+	ASPECT_RATIO = rows / cols;
+	FOV = 1 / tan(FOV_ANGLE / 2.0);
 
 	move_cursor_NO_REASSGN(1, 3);
 	printf("Max cols: %d Max rows: %d ", Term_Conf.cols, Term_Conf.rows);
@@ -210,7 +217,6 @@ void drawSquare(double x, double y, double z, double w, double h, int col_code) 
 void* animation(void* thread_id) {
 	double degrees = 1.0;
     double radians = degrees * M_PI / 180.0;
-
 	double x_s = 0;
 	double sq_side = 10;
 	double z_s = 5.0;
