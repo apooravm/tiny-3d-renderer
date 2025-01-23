@@ -1,6 +1,7 @@
 #include <pthread.h>
 #include <asm-generic/ioctls.h>
 #include <bits/pthreadtypes.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <termios.h>
 #include <unistd.h>
@@ -11,16 +12,105 @@
 #include "utils/window_setup.h"
 
 #define NUM_THREADS 3
+#define SQUARE_TRIANGLE_COUNT 2
+#define CUBE_TRIANGLE_COUNT 12
+
+// homogeneous 4D vector
+typedef struct {
+	float x, y, z, w;
+} Vec4 ;
+
+// 4x4 matrix
+typedef struct {
+	float m[4][4];
+} Mat4;
+
+typedef struct {
+	Vec4 vecs[3];
+} Triangle;
+
+typedef struct {
+	Triangle *tris;
+	size_t numTris;
+} Mesh;
+
+Mesh double_tris;
+size_t double_tris_size = 1;
+
+Mesh* SquareMesh;
+
+// using const to prevent input modification
+Vec4 mat4_mult_vec4(const Mat4* mat, const Vec4* vec) {
+	Vec4 result;
+
+	result.x = mat->m[0][0] * vec->x + mat->m[0][1] * vec->y +
+		mat->m[0][2] * vec->z + mat->m[0][3] * vec->w;
+
+	result.y = mat->m[1][0] * vec->x + mat->m[1][1] * vec->y +
+		mat->m[1][2] * vec->z + mat->m[1][3] * vec->w;
+
+	result.z = mat->m[2][0] * vec->x + mat->m[2][1] * vec->y +
+		mat->m[2][2] * vec->z + mat->m[2][3] * vec->w;
+
+	result.w = mat->m[3][0] * vec->x + mat->m[3][1] * vec->y +
+		mat->m[3][2] * vec->z + mat->m[3][3] * vec->w;
+
+	return result;
+}
 
 int STOP_READING = 1;
 pthread_t threads[NUM_THREADS];
 pthread_mutex_t mutex;
 
 int D_DIST = 1;
-int ASPECT_RATIO;
+float ASPECT_RATIO;
 double FOV_ANGLE = 90;
 double FOV;
 double Z_NORM;
+float fNear = 0.1f;
+float fFar = 1000.0f;
+float fFov = 90.0f;
+float fFovRad;
+Mat4 projection_matrix = { 0 };
+
+void DrawLine(int x1, int y1, int x2, int y2) {
+	// Calculate the differences
+    int dx = abs(x2 - x1);
+    int dy = abs(y2 - y1);
+
+    int sx = (x1 < x2) ? 1 : -1;  // step in x direction
+    int sy = (y1 < y2) ? 1 : -1;  // step in y direction
+
+    int err = dx - dy;  // initial error term
+
+    // Use a for loop to replace the while loop
+    // We iterate through x or y for the total number of steps
+    int maxIter = (dx > dy) ? dx : dy;  // The number of steps is the larger of dx or dy
+
+    for (int i = 0; i <= maxIter; i++) {
+        // Plot the point (x1, y1)
+        // printf("Plotting pixel at (%d, %d)\n", x1, y1);
+		move_cursor_NO_REASSGN(x1, y1);
+		printf("#");
+
+        // Calculate error
+        int e2 = err * 2;
+
+        if (e2 > -dy) {
+            err -= dy;
+            x1 += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y1 += sy;
+        }
+    }}
+
+void draw_triangle(const Triangle* tri) {
+	DrawLine(tri->vecs[0].x, tri->vecs[0].y, tri->vecs[1].x, tri->vecs[1].y);
+	DrawLine(tri->vecs[1].x, tri->vecs[1].y, tri->vecs[2].x, tri->vecs[2].y);
+	DrawLine(tri->vecs[2].x, tri->vecs[2].y, tri->vecs[0].x, tri->vecs[0].y);
+}
 
 void init_thread() {
 	pthread_t threads[NUM_THREADS];
@@ -46,9 +136,6 @@ void init_window() {
 
 	Term_Conf.cols = cols;
 	Term_Conf.rows = rows;
-
-	ASPECT_RATIO = rows / cols;
-	FOV = 1 / tan(FOV_ANGLE / 2.0);
 
 	move_cursor_NO_REASSGN(1, 3);
 	printf("Max cols: %d Max rows: %d ", Term_Conf.cols, Term_Conf.rows);
@@ -221,6 +308,9 @@ void* animation(void* thread_id) {
 	double sq_side = 10;
 	double z_s = 5.0;
 
+	Vec4 init_p = {20, 20, 10, 1};
+	init_p = mat4_mult_vec4(&projection_matrix, &init_p);
+
 	Point3D sq1[4] = {
 		{x_s, x_s, z_s},
 		{x_s + sq_side, x_s, z_s},
@@ -240,24 +330,115 @@ void* animation(void* thread_id) {
 		fflush(stdout);
 		pthread_mutex_unlock(&mutex);
 
+		// pthread_mutex_lock(&mutex);
+		// move_cursor_NO_REASSGN(1, 2);
+		// printf("%f", projection_matrix.m[0][0]);
+		// // here
+		// move_cursor_NO_REASSGN(init_p.x, init_p.y);
+		// printf("#");
+		// fflush(stdout);
+		// pthread_mutex_unlock(&mutex);
+
+		for (int i = 0; i < SquareMesh->numTris; i++) {
+			draw_triangle(&SquareMesh->tris[i]);
+		}
+
+		// DrawLine(23, 20, 30, 32);
+		fflush(stdout);
+
 		// Furthest objects first
-		drawSquare(-10, -5, 15, 5, 10, 33);
-		drawSquare(10, -5, 15, 5, 10, 33);
-
-		drawSquare(-10, -5, 10, 5, 10, 32);
-		drawSquare(10, -5, 10, 5, 10, 32);
-
-		drawSquare(-10, -5, 5, 2, 10, 31);
-		drawSquare(10, -5, 5, 2, 10, 31);
+		// drawSquare(-10, -5, 15, 5, 10, 33);
+		// drawSquare(10, -5, 15, 5, 10, 33);
+		//
+		// drawSquare(-10, -5, 10, 5, 10, 32);
+		// drawSquare(10, -5, 10, 5, 10, 32);
+		//
+		// drawSquare(-10, -5, 5, 2, 10, 31);
+		// drawSquare(10, -5, 5, 2, 10, 31);
 
 	}
 
     pthread_exit(NULL);
 }
 
+Vec4 create_vec4(float x, float y, float z, float w) {
+	Vec4 vec = {x, y, z, w};
+	return vec;
+}
+
+Triangle create_triangle(Vec4 v0, Vec4 v1, Vec4 v2) {
+    Triangle tri = { {v0, v1, v2} };
+    return tri;
+}
+
+// Allocate sq_mesh on its own on heap mem
+// Otherwise after the func ends, it frees the obj and pointer is left hanging
+Mesh* get_square(float x, float y, float side, float z) {
+	Mesh* sq_mesh = (Mesh *)malloc(sizeof(Mesh));
+	if (sq_mesh == NULL) {
+		printf("Mem allocation failed!\n");
+		return NULL;
+	}
+
+	// seperate allocation for triangles
+	sq_mesh->tris = (Triangle *)malloc(SQUARE_TRIANGLE_COUNT * sizeof(Triangle));
+    if (sq_mesh->tris == NULL) {
+        printf("Memory allocation for triangles failed!\n");
+        free(sq_mesh);
+        return NULL;
+    }
+
+	sq_mesh->numTris = SQUARE_TRIANGLE_COUNT;
+
+	sq_mesh->tris[0] = create_triangle(
+		create_vec4(10, 5, 2, 1),
+		create_vec4(15, 10, 2, 1),
+		create_vec4(10, 10, 2, 1)
+	);
+
+	sq_mesh->tris[1] = create_triangle(
+		create_vec4(10, 5, 2, 1),
+		create_vec4(15, 5, 2, 1),
+		create_vec4(15, 10, 2, 1)
+	);
+
+	return sq_mesh;
+}
+
 int main() {
+	fFovRad = 1.0f / tanf((fFov * 3.14159f / 180.0f) * 0.5f);
+
+	// double_tris.tris = (Triangle *)malloc(double_tris_size * sizeof(Triangle));
+	// if (double_tris.tris == NULL) {
+	// 	printf("Mem allocation failed!\n");
+	// 	return 1;
+	// }
+	//
+	// double_tris.numTris = double_tris_size;
+	// double_tris.tris[0] = create_triangle(
+	// 	create_vec4(4, 6, 2, 1),
+ //        create_vec4(100, 15, 2, 1),
+ //        create_vec4(4, 37, 2, 1)
+	// );
+	
+	SquareMesh = get_square(10, 10, 10, 1);
+
+	// double_tris.tris[1] = create_triangle(
+	// 	create_vec4(10, 2, 2, 1),
+ //        create_vec4(13, 0, 2, 1),
+ //        create_vec4(15, 5, 2, 1)
+	// );
+
 	enable_raw_mode();
 	init_window();
+
+	ASPECT_RATIO = (float)Term_Conf.rows / (float)Term_Conf.cols;
+	projection_matrix.m[0][0] = ASPECT_RATIO * fFovRad;
+	projection_matrix.m[1][1] = fFovRad;
+	projection_matrix.m[2][2] = fFar / (fFar - fNear);
+	projection_matrix.m[3][2] = (-fFar * fNear) / (fFar - fNear);
+	projection_matrix.m[2][3] = 1.0f;
+	projection_matrix.m[4][3] = 0.0f;
 
 	srand((unsigned int)time(NULL));
 
@@ -276,4 +457,7 @@ int main() {
 
     pthread_mutex_destroy(&mutex);
     pthread_exit(NULL);
+
+	free(SquareMesh->tris);
+	free(SquareMesh);
 }
