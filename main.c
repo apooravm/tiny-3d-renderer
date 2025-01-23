@@ -371,6 +371,8 @@ Triangle create_triangle(Vec4 v0, Vec4 v1, Vec4 v2) {
     return tri;
 }
 
+int W_DEF = 1;
+
 // Allocate sq_mesh on its own on heap mem
 // Otherwise after the func ends, it frees the obj and pointer is left hanging
 Mesh* get_square(float x, float y, float side, float z) {
@@ -391,18 +393,51 @@ Mesh* get_square(float x, float y, float side, float z) {
 	sq_mesh->numTris = SQUARE_TRIANGLE_COUNT;
 
 	sq_mesh->tris[0] = create_triangle(
-		create_vec4(10, 5, 2, 1),
-		create_vec4(15, 10, 2, 1),
-		create_vec4(10, 10, 2, 1)
+		create_vec4(x, y, z, W_DEF),
+		create_vec4(x + side, y + side, z, W_DEF),
+		create_vec4(x, y + side, z, W_DEF)
 	);
 
 	sq_mesh->tris[1] = create_triangle(
-		create_vec4(10, 5, 2, 1),
-		create_vec4(15, 5, 2, 1),
-		create_vec4(15, 10, 2, 1)
+		create_vec4(x, y, z, W_DEF),
+		create_vec4(x + side, y, z, W_DEF),
+		create_vec4(x + side, y + side, z, W_DEF)
 	);
 
 	return sq_mesh;
+}
+
+Mesh* get_cube(float x, float y, float side, float z) {
+	Mesh* cube_mesh = (Mesh *)malloc(sizeof(Mesh));
+	if (cube_mesh == NULL) {
+		printf("Mem alloc for cube fail\n");
+		return NULL;
+	}
+
+	// seperate allocation for triangles
+	cube_mesh->tris = (Triangle *)malloc(CUBE_TRIANGLE_COUNT * sizeof(Triangle));
+    if (cube_mesh->tris == NULL) {
+        printf("Mem alloc for triangles fail\n");
+        free(cube_mesh);
+        return NULL;
+    }
+
+	cube_mesh->numTris = CUBE_TRIANGLE_COUNT;
+
+	cube_mesh->tris[0] = create_triangle(
+		create_vec4(x, y, z, W_DEF),
+		create_vec4(x + side, y + side, z, W_DEF),
+		create_vec4(x, y + side, z, W_DEF)
+	);
+
+	cube_mesh->tris[1] = create_triangle(
+		create_vec4(x, y, z, W_DEF),
+		create_vec4(x + side, y, z, W_DEF),
+		create_vec4(x + side, y + side, z, W_DEF)
+	);
+
+	return cube_mesh;
+
 }
 
 int main() {
