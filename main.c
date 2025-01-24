@@ -38,6 +38,7 @@ Mesh double_tris;
 size_t double_tris_size = 1;
 
 Mesh* SquareMesh;
+Mesh* CubeMesh;
 
 // using const to prevent input modification
 Vec4 mat4_mult_vec4(const Mat4* mat, const Vec4* vec) {
@@ -339,8 +340,8 @@ void* animation(void* thread_id) {
 		// fflush(stdout);
 		// pthread_mutex_unlock(&mutex);
 
-		for (int i = 0; i < SquareMesh->numTris; i++) {
-			draw_triangle(&SquareMesh->tris[i]);
+		for (int i = 0; i < CubeMesh->numTris; i++) {
+			draw_triangle(&CubeMesh->tris[i]);
 		}
 
 		// DrawLine(23, 20, 30, 32);
@@ -436,6 +437,66 @@ Mesh* get_cube(float x, float y, float side, float z) {
 		create_vec4(x + side, y + side, z, W_DEF)
 	);
 
+	cube_mesh->tris[2] = create_triangle(
+		create_vec4(x + side, y, z, W_DEF),
+		create_vec4(x + side, y + side, z + side, W_DEF),
+		create_vec4(x + side, y + side, z, W_DEF)
+	);
+
+	cube_mesh->tris[3] = create_triangle(
+		create_vec4(x + side, y, z, W_DEF),
+		create_vec4(x + side, y, z + side, W_DEF),
+		create_vec4(x + side, y + side, z + side, W_DEF)
+	);
+
+	cube_mesh->tris[4] = create_triangle(
+		create_vec4(x + side, y, z + side, W_DEF),
+		create_vec4(x, y, z + side, W_DEF),
+		create_vec4(x + side, y + side, z + side, W_DEF)
+	);
+
+	cube_mesh->tris[5] = create_triangle(
+		create_vec4(x, y, z + side, W_DEF),
+		create_vec4(x, y + side, z + side, W_DEF),
+		create_vec4(x + side, y + side, z + side, W_DEF)
+	);
+
+	cube_mesh->tris[6] = create_triangle(
+		create_vec4(x, y, z + side, W_DEF),
+		create_vec4(x, y, z, W_DEF),
+		create_vec4(x, y + side, z + side, W_DEF)
+	);
+
+	cube_mesh->tris[7] = create_triangle(
+		create_vec4(x, y, z, W_DEF),
+		create_vec4(x, y + side, z, W_DEF),
+		create_vec4(x, y + side, z + side, W_DEF)
+	);
+
+	cube_mesh->tris[8] = create_triangle(
+		create_vec4(x, y, z + side, W_DEF),
+		create_vec4(x + side, y, z + side, W_DEF),
+		create_vec4(x, y, z, W_DEF)
+	);
+
+	cube_mesh->tris[9] = create_triangle(
+		create_vec4(x + side, y, z + side, W_DEF),
+		create_vec4(x + side, y, z + side, W_DEF),
+		create_vec4(x, y, z, W_DEF)
+	);
+
+	cube_mesh->tris[10] = create_triangle(
+		create_vec4(x, y + side, z, W_DEF),
+		create_vec4(x + side, y + side, z, W_DEF),
+		create_vec4(x, y + side, z + side, W_DEF)
+	);
+
+	cube_mesh->tris[11] = create_triangle(
+		create_vec4(x + side, y + side, z, W_DEF),
+		create_vec4(x + side, y + side, z + side, W_DEF),
+		create_vec4(x, y + side, z + side, W_DEF)
+	);
+
 	return cube_mesh;
 
 }
@@ -456,7 +517,8 @@ int main() {
  //        create_vec4(4, 37, 2, 1)
 	// );
 	
-	SquareMesh = get_square(10, 10, 10, 1);
+	SquareMesh = get_square(10, 10, 200, 1);
+	CubeMesh = get_cube(10, 10, 20, 1);
 
 	// double_tris.tris[1] = create_triangle(
 	// 	create_vec4(10, 2, 2, 1),
@@ -495,4 +557,7 @@ int main() {
 
 	free(SquareMesh->tris);
 	free(SquareMesh);
+
+	free(CubeMesh->tris);
+	free(CubeMesh);
 }
