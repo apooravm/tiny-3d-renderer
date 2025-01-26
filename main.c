@@ -91,7 +91,7 @@ void DrawLine(int x1, int y1, int x2, int y2) {
     for (int i = 0; i <= maxIter; i++) {
         // Plot the point (x1, y1)
         // printf("Plotting pixel at (%d, %d)\n", x1, y1);
-		move_cursor_NO_REASSGN(x1, y1);
+		move_cursor_translate(x1, y1);
 		printf("#");
 
         // Calculate error
@@ -107,7 +107,7 @@ void DrawLine(int x1, int y1, int x2, int y2) {
         }
     }}
 
-void draw_triangle(const Triangle* tri) {
+void draw_triangle(Triangle* tri) {
 	DrawLine(tri->vecs[0].x, tri->vecs[0].y, tri->vecs[1].x, tri->vecs[1].y);
 	DrawLine(tri->vecs[1].x, tri->vecs[1].y, tri->vecs[2].x, tri->vecs[2].y);
 	DrawLine(tri->vecs[2].x, tri->vecs[2].y, tri->vecs[0].x, tri->vecs[0].y);
@@ -302,6 +302,30 @@ void drawSquare(double x, double y, double z, double w, double h, int col_code) 
 	}
 }
 
+void rotate_x(float* x, float* y, float* z, float angle) {
+	float new_y = *y * cos(angle) - *z * sin(angle);
+	float new_z = *y * sin(angle) + *z * cos(angle);
+
+	*y = new_y;
+	*z = new_z;
+}
+
+void rotate_y(float* x, float* y, float* z, float angle) {
+    float new_x = *x * cos(angle) + *z * sin(angle);
+    float new_z = -(*x) * sin(angle) + *z * cos(angle);
+
+    *x = new_x;
+    *z = new_z;
+}
+
+void rotate_z(float* x, float* y, float* z, float angle) {
+    float new_x = *x * cos(angle) - *y * sin(angle);
+    float new_y = *x * sin(angle) + *y * cos(angle);
+
+    *x = new_x;
+    *y = new_y;
+}
+
 void* animation(void* thread_id) {
 	double degrees = 1.0;
     double radians = degrees * M_PI / 180.0;
@@ -319,8 +343,10 @@ void* animation(void* thread_id) {
 		{x_s + sq_side, x_s + sq_side, z_s},
 	};
 
+	float angle = 10 * (3.14159 / 180);
+
 	while (STOP_READING) {
-		usleep(200000);
+		usleep(100000);
 		clear_screen();
 
 		pthread_mutex_lock(&mutex);
@@ -340,9 +366,56 @@ void* animation(void* thread_id) {
 		// fflush(stdout);
 		// pthread_mutex_unlock(&mutex);
 
+		DrawLine(Term_Conf.cols / 2, 0, Term_Conf.cols / 2, Term_Conf.rows);
+
 		for (int i = 0; i < CubeMesh->numTris; i++) {
 			draw_triangle(&CubeMesh->tris[i]);
 		}
+
+		// get rotated idiot
+		for (int i = 0; i < CubeMesh->numTris; i++) {
+			for (int j = 0; j < 3; j++) {
+				rotate_x(&CubeMesh->tris[i].vecs[j].x, 
+						&CubeMesh->tris[i].vecs[j].y, 
+						&CubeMesh->tris[i].vecs[j].z, angle);
+
+				rotate_y(&CubeMesh->tris[i].vecs[j].x, 
+						&CubeMesh->tris[i].vecs[j].y, 
+						&CubeMesh->tris[i].vecs[j].z, angle);
+
+				rotate_z(&CubeMesh->tris[i].vecs[j].x, 
+						&CubeMesh->tris[i].vecs[j].y, 
+						&CubeMesh->tris[i].vecs[j].z, angle);
+
+			}
+		}
+
+
+		// for (int i = 0; i < CubeMesh->numTris; i++) {
+		// 	draw_triangle(&CubeMesh->tris[i]);
+		// }
+		//
+		// for (int i = 0; i < CubeMesh->numTris; i++) {
+		// 	for (int j = 0; j < 3; j++) {
+		// 		float tri_x = CubeMesh->tris[i].vecs[j].x;
+		// 		float tri_y = CubeMesh->tris[i].vecs[j].y;
+		// 		float tri_z = CubeMesh->tris[i].vecs[j].z;
+		//
+		// 		float new_x = tri_x + 0 + 0;
+		// 		float new_y = tri_x * 0 + tri_y * cos(angle) - tri_z * sin(angle);
+		// 		float new_z = tri_x * 0 + tri_y * sin(angle) + tri_z * cos(angle);
+		//
+		// 		new_x = new_x * cos(angle) + 0 + new_z * sin(angle);
+		// 		new_y = 0 + new_y + 0;
+		// 		new_z = -1 * new_x * sin(angle) + 0 + cos(angle) * new_z;
+		//
+		// 		CubeMesh->tris[i].vecs[j].x = new_x;
+		// 		CubeMesh->tris[i].vecs[j].y = new_y;
+		// 		CubeMesh->tris[i].vecs[j].z = new_z;
+		// 	}
+		// }
+		//
+		// angle += 0.1;
 
 		// DrawLine(23, 20, 30, 32);
 		fflush(stdout);
@@ -409,96 +482,55 @@ Mesh* get_square(float x, float y, float side, float z) {
 }
 
 Mesh* get_cube(float x, float y, float side, float z) {
-	Mesh* cube_mesh = (Mesh *)malloc(sizeof(Mesh));
-	if (cube_mesh == NULL) {
-		printf("Mem alloc for cube fail\n");
-		return NULL;
-	}
-
-	// seperate allocation for triangles
-	cube_mesh->tris = (Triangle *)malloc(CUBE_TRIANGLE_COUNT * sizeof(Triangle));
-    if (cube_mesh->tris == NULL) {
-        printf("Mem alloc for triangles fail\n");
-        free(cube_mesh);
+    // Allocate memory for the cube
+    Mesh* cube_mesh = (Mesh *)malloc(sizeof(Mesh));
+    if (cube_mesh == NULL) {
+        printf("Failed to allocate memory for cube.\n");
         return NULL;
     }
 
-	cube_mesh->numTris = CUBE_TRIANGLE_COUNT;
+    // Allocate memory for the triangles
+    cube_mesh->tris = (Triangle *)malloc(CUBE_TRIANGLE_COUNT * sizeof(Triangle));
+    if (cube_mesh->tris == NULL) {
+        printf("Failed to allocate memory for cube's triangles.\n");
+        free(cube_mesh);  // Free mesh if triangle allocation fails
+        return NULL;
+    }
 
-	cube_mesh->tris[0] = create_triangle(
-		create_vec4(x, y, z, W_DEF),
-		create_vec4(x + side, y + side, z, W_DEF),
-		create_vec4(x, y + side, z, W_DEF)
-	);
+    // Define the number of triangles
+    cube_mesh->numTris = CUBE_TRIANGLE_COUNT;
 
-	cube_mesh->tris[1] = create_triangle(
-		create_vec4(x, y, z, W_DEF),
-		create_vec4(x + side, y, z, W_DEF),
-		create_vec4(x + side, y + side, z, W_DEF)
-	);
+    // Define vertices of the cube
+    Vec4 vertices[8] = {
+        create_vec4(x, y, z, W_DEF),                   // 0: Bottom-front-left
+        create_vec4(x + side, y, z, W_DEF),           // 1: Bottom-front-right
+        create_vec4(x, y + side, z, W_DEF),           // 2: Top-front-left
+        create_vec4(x + side, y + side, z, W_DEF),    // 3: Top-front-right
+        create_vec4(x, y, z + side, W_DEF),           // 4: Bottom-back-left
+        create_vec4(x + side, y, z + side, W_DEF),    // 5: Bottom-back-right
+        create_vec4(x, y + side, z + side, W_DEF),    // 6: Top-back-left
+        create_vec4(x + side, y + side, z + side, W_DEF) // 7: Top-back-right
+    };
 
-	cube_mesh->tris[2] = create_triangle(
-		create_vec4(x + side, y, z, W_DEF),
-		create_vec4(x + side, y + side, z + side, W_DEF),
-		create_vec4(x + side, y + side, z, W_DEF)
-	);
+    // Define triangles for each face
+    int indices[12][3] = {
+        {0, 3, 2}, {0, 1, 3},  // Front face
+        {1, 7, 3}, {1, 5, 7},  // Right face
+        {5, 6, 7}, {5, 4, 6},  // Back face
+        {4, 2, 6}, {4, 0, 2},  // Left face
+        {2, 7, 6}, {2, 3, 7},  // Top face
+        {4, 1, 0}, {4, 5, 1}   // Bottom face
+    };
 
-	cube_mesh->tris[3] = create_triangle(
-		create_vec4(x + side, y, z, W_DEF),
-		create_vec4(x + side, y, z + side, W_DEF),
-		create_vec4(x + side, y + side, z + side, W_DEF)
-	);
+    for (int i = 0; i < CUBE_TRIANGLE_COUNT; i++) {
+        cube_mesh->tris[i] = create_triangle(
+            vertices[indices[i][0]],
+            vertices[indices[i][1]],
+            vertices[indices[i][2]]
+        );
+    }
 
-	cube_mesh->tris[4] = create_triangle(
-		create_vec4(x + side, y, z + side, W_DEF),
-		create_vec4(x, y, z + side, W_DEF),
-		create_vec4(x + side, y + side, z + side, W_DEF)
-	);
-
-	cube_mesh->tris[5] = create_triangle(
-		create_vec4(x, y, z + side, W_DEF),
-		create_vec4(x, y + side, z + side, W_DEF),
-		create_vec4(x + side, y + side, z + side, W_DEF)
-	);
-
-	cube_mesh->tris[6] = create_triangle(
-		create_vec4(x, y, z + side, W_DEF),
-		create_vec4(x, y, z, W_DEF),
-		create_vec4(x, y + side, z + side, W_DEF)
-	);
-
-	cube_mesh->tris[7] = create_triangle(
-		create_vec4(x, y, z, W_DEF),
-		create_vec4(x, y + side, z, W_DEF),
-		create_vec4(x, y + side, z + side, W_DEF)
-	);
-
-	cube_mesh->tris[8] = create_triangle(
-		create_vec4(x, y, z + side, W_DEF),
-		create_vec4(x + side, y, z + side, W_DEF),
-		create_vec4(x, y, z, W_DEF)
-	);
-
-	cube_mesh->tris[9] = create_triangle(
-		create_vec4(x + side, y, z + side, W_DEF),
-		create_vec4(x + side, y, z + side, W_DEF),
-		create_vec4(x, y, z, W_DEF)
-	);
-
-	cube_mesh->tris[10] = create_triangle(
-		create_vec4(x, y + side, z, W_DEF),
-		create_vec4(x + side, y + side, z, W_DEF),
-		create_vec4(x, y + side, z + side, W_DEF)
-	);
-
-	cube_mesh->tris[11] = create_triangle(
-		create_vec4(x + side, y + side, z, W_DEF),
-		create_vec4(x + side, y + side, z + side, W_DEF),
-		create_vec4(x, y + side, z + side, W_DEF)
-	);
-
-	return cube_mesh;
-
+    return cube_mesh;
 }
 
 int main() {
@@ -517,9 +549,6 @@ int main() {
  //        create_vec4(4, 37, 2, 1)
 	// );
 	
-	SquareMesh = get_square(10, 10, 200, 1);
-	CubeMesh = get_cube(10, 10, 20, 1);
-
 	// double_tris.tris[1] = create_triangle(
 	// 	create_vec4(10, 2, 2, 1),
  //        create_vec4(13, 0, 2, 1),
@@ -538,6 +567,14 @@ int main() {
 	projection_matrix.m[4][3] = 0.0f;
 
 	srand((unsigned int)time(NULL));
+
+	SquareMesh = get_square(10, 10, 200, 1);
+	CubeMesh = get_cube(230, 60, 20, 1);
+	// for (int i = 0; i < CUBE_TRIANGLE_COUNT; i++) {
+	// 	CubeMesh->tris[i].vecs[0] = mat4_mult_vec4(&projection_matrix, &CubeMesh->tris[i].vecs[0]);
+	// 	CubeMesh->tris[i].vecs[1] = mat4_mult_vec4(&projection_matrix, &CubeMesh->tris[i].vecs[1]);
+	// 	CubeMesh->tris[i].vecs[2] = mat4_mult_vec4(&projection_matrix, &CubeMesh->tris[i].vecs[2]);
+	// }
 
 	long read_input_id = 0;
 	pthread_create(&threads[read_input_id], NULL, read_user_input, (void*)read_input_id);
