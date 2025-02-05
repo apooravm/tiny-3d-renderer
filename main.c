@@ -44,17 +44,10 @@ Mesh* CubeMesh;
 Vec4 mat4_mult_vec4(const Mat4* mat, const Vec4* vec) {
 	Vec4 result;
 
-	result.x = mat->m[0][0] * vec->x + mat->m[0][1] * vec->y +
-		mat->m[0][2] * vec->z + mat->m[0][3] * vec->w;
-
-	result.y = mat->m[1][0] * vec->x + mat->m[1][1] * vec->y +
-		mat->m[1][2] * vec->z + mat->m[1][3] * vec->w;
-
-	result.z = mat->m[2][0] * vec->x + mat->m[2][1] * vec->y +
-		mat->m[2][2] * vec->z + mat->m[2][3] * vec->w;
-
-	result.w = mat->m[3][0] * vec->x + mat->m[3][1] * vec->y +
-		mat->m[3][2] * vec->z + mat->m[3][3] * vec->w;
+	result.x = mat->m[0][0] * vec->x + mat->m[1][0] * vec->y + mat->m[2][0] * vec->z + mat->m[3][0];
+	result.y = mat->m[0][1] * vec->x + mat->m[1][1] * vec->y + mat->m[2][1] * vec->z + mat->m[3][1];
+	result.z = mat->m[0][2] * vec->x + mat->m[1][2] * vec->y + mat->m[2][2] * vec->z + mat->m[3][2];
+	result.w = mat->m[0][3] * vec->x + mat->m[1][3] * vec->y + mat->m[2][3] * vec->z + mat->m[3][3];
 
 	return result;
 }
@@ -64,13 +57,14 @@ pthread_t threads[NUM_THREADS];
 pthread_mutex_t mutex;
 
 int D_DIST = 1;
+int W_DEF = 1;
 float ASPECT_RATIO;
 double FOV_ANGLE = 90;
 double FOV;
 double Z_NORM;
 float fNear = 0.1f;
 float fFar = 1000.0f;
-float fFov = 90.0f;
+float fFov = 45.0f;
 float fFovRad;
 Mat4 projection_matrix = { 0 };
 
@@ -91,7 +85,10 @@ void DrawLine(int x1, int y1, int x2, int y2) {
     for (int i = 0; i <= maxIter; i++) {
         // Plot the point (x1, y1)
         // printf("Plotting pixel at (%d, %d)\n", x1, y1);
-		move_cursor_translate(x1, y1);
+
+		int t_x = x1 + Term_Conf.cols / 2;
+		int t_y = (-1 * y1) + Term_Conf.rows / 2;
+		move_cursor_NO_REASSGN(t_x, t_y);
 		printf("#");
 
         // Calculate error
@@ -101,6 +98,7 @@ void DrawLine(int x1, int y1, int x2, int y2) {
             err -= dy;
             x1 += sx;
         }
+
         if (e2 < dx) {
             err += dx;
             y1 += sy;
@@ -108,9 +106,37 @@ void DrawLine(int x1, int y1, int x2, int y2) {
     }}
 
 void draw_triangle(Triangle* tri) {
-	DrawLine(tri->vecs[0].x, tri->vecs[0].y, tri->vecs[1].x, tri->vecs[1].y);
-	DrawLine(tri->vecs[1].x, tri->vecs[1].y, tri->vecs[2].x, tri->vecs[2].y);
-	DrawLine(tri->vecs[2].x, tri->vecs[2].y, tri->vecs[0].x, tri->vecs[0].y);
+	Vec4 new_tri_1 = mat4_mult_vec4(&projection_matrix, &tri->vecs[0]);
+	Vec4 new_tri_2 = mat4_mult_vec4(&projection_matrix, &tri->vecs[1]);
+	Vec4 new_tri_3 = mat4_mult_vec4(&projection_matrix, &tri->vecs[2]);
+
+	move_cursor_NO_REASSGN(1, 4);
+	printf("z: %f\nw: %f\n", new_tri_1.z, new_tri_1.w);
+
+	// if (new_tri_1.w != 0.0f) {
+	// 	new_tri_1.x /= new_tri_1.w;
+	// 	new_tri_1.y /= new_tri_1.w;
+	// 	new_tri_1.z /= new_tri_1.w;
+	// }
+	//
+	// if (new_tri_2.w != 0.0f) {
+	// 	new_tri_2.x /= new_tri_2.w;
+	// 	new_tri_2.y /= new_tri_2.w;
+	// 	new_tri_2.z /= new_tri_2.w;
+	// }
+	//
+	// if (new_tri_3.w != 0.0f) {
+	// 	new_tri_3.x /= new_tri_3.w;
+	// 	new_tri_3.y /= new_tri_3.w;
+	// 	new_tri_3.z /= new_tri_3.w;
+	// }
+
+	DrawLine(new_tri_1.x, new_tri_1.y, new_tri_2.x, new_tri_2.y);
+	DrawLine(new_tri_2.x, new_tri_2.y, new_tri_3.x, new_tri_3.y);
+	DrawLine(new_tri_3.x, new_tri_3.y, new_tri_1.x, new_tri_1.y);
+	// DrawLine(tri->vecs[0].x, tri->vecs[0].y, tri->vecs[1].x, tri->vecs[1].y);
+	// DrawLine(tri->vecs[1].x, tri->vecs[1].y, tri->vecs[2].x, tri->vecs[2].y);
+	// DrawLine(tri->vecs[2].x, tri->vecs[2].y, tri->vecs[0].x, tri->vecs[0].y);
 }
 
 void init_thread() {
@@ -186,8 +212,8 @@ void* read_user_input(void* thread_id) {
 				STOP_READING = 0;
 
 			case 'w':
-				if (D_DIST >= 0) {
-					D_DIST += 1;
+				if (W_DEF >= 0) {
+					W_DEF += 1;
 				}
 				if (Term_Conf.cursor_pos_y > 1) {
 					pos_y--;
@@ -196,8 +222,8 @@ void* read_user_input(void* thread_id) {
 				// printf("W pressed\n");
 
 			case 's':
-				if (D_DIST > 0) {
-					D_DIST -= 1;
+				if (W_DEF > 0) {
+					W_DEF -= 1;
 				}
 				if (Term_Conf.cursor_pos_y < Term_Conf.rows) {
 					pos_y++;
@@ -269,39 +295,6 @@ void* read_ms_input(void* thread_id) {
 	pthread_exit(NULL);
 }
 
-void drawPoint(double x_orig, double y_orig, double z_orig, double d_dist, double* new_x, double* new_y) {
-	*new_x = (d_dist * x_orig) / z_orig;
-	*new_y = (d_dist * y_orig) / z_orig;
-}
-
-void drawSquare(double x, double y, double z, double w, double h, int col_code) {
-	double x1 = x;
-	double x2 = x + w;
-
-	double y1 = y;
-	double y2 = y + h;
-
-	double new_x1 = (x1 * D_DIST) / z;
-	double new_x2 = (x2 * D_DIST) / z;
-
-	double new_y1 = (y1 * D_DIST) / z;
-	double new_y2 = (y2 * D_DIST) / z;
-
-	for (int i_x = new_x1; i_x < new_x2; i_x++) {
-		for (int i_y = new_y1; i_y < new_y2; i_y++) {
-			if (i_x > ((Term_Conf.cols / 2) * -1) && i_x < (Term_Conf.cols / 2) && i_y > ((Term_Conf.rows / 2) * -1) && i_y <= (Term_Conf.rows / 2)) {
-			
-				pthread_mutex_lock(&mutex);
-				move_cursor_translate(i_x, i_y);
-				// printf("#");
-				printf("\033[%dm#\033[0m\n", col_code);
-				fflush(stdout); // Not printing without this; when NUM_PARTICLES is 1
-				pthread_mutex_unlock(&mutex);
-			}
-		}
-	}
-}
-
 void rotate_x(float* x, float* y, float* z, float angle) {
 	float new_y = *y * cos(angle) - *z * sin(angle);
 	float new_z = *y * sin(angle) + *z * cos(angle);
@@ -334,7 +327,7 @@ void* animation(void* thread_id) {
 	double z_s = 5.0;
 
 	Vec4 init_p = {20, 20, 10, 1};
-	init_p = mat4_mult_vec4(&projection_matrix, &init_p);
+	Vec4 init_p_trans = mat4_mult_vec4(&projection_matrix, &init_p);
 
 	Point3D sq1[4] = {
 		{x_s, x_s, z_s},
@@ -353,20 +346,9 @@ void* animation(void* thread_id) {
 		move_cursor_NO_REASSGN(1, 1);
 		printf("WIDTH: %d; HEIGHT: %d", Term_Conf.cols, Term_Conf.rows);
 		move_cursor_NO_REASSGN(1, 2);
-		printf("DIST %d", D_DIST);
+		printf("DIST %d", W_DEF);
 		fflush(stdout);
 		pthread_mutex_unlock(&mutex);
-
-		// pthread_mutex_lock(&mutex);
-		// move_cursor_NO_REASSGN(1, 2);
-		// printf("%f", projection_matrix.m[0][0]);
-		// // here
-		// move_cursor_NO_REASSGN(init_p.x, init_p.y);
-		// printf("#");
-		// fflush(stdout);
-		// pthread_mutex_unlock(&mutex);
-
-		DrawLine(Term_Conf.cols / 2, 0, Term_Conf.cols / 2, Term_Conf.rows);
 
 		for (int i = 0; i < CubeMesh->numTris; i++) {
 			draw_triangle(&CubeMesh->tris[i]);
@@ -383,53 +365,14 @@ void* animation(void* thread_id) {
 						&CubeMesh->tris[i].vecs[j].y, 
 						&CubeMesh->tris[i].vecs[j].z, angle);
 
-				rotate_z(&CubeMesh->tris[i].vecs[j].x, 
-						&CubeMesh->tris[i].vecs[j].y, 
-						&CubeMesh->tris[i].vecs[j].z, angle);
+				// rotate_z(&CubeMesh->tris[i].vecs[j].x, 
+				// 		&CubeMesh->tris[i].vecs[j].y, 
+				// 		&CubeMesh->tris[i].vecs[j].z, angle);
 
 			}
 		}
 
-
-		// for (int i = 0; i < CubeMesh->numTris; i++) {
-		// 	draw_triangle(&CubeMesh->tris[i]);
-		// }
-		//
-		// for (int i = 0; i < CubeMesh->numTris; i++) {
-		// 	for (int j = 0; j < 3; j++) {
-		// 		float tri_x = CubeMesh->tris[i].vecs[j].x;
-		// 		float tri_y = CubeMesh->tris[i].vecs[j].y;
-		// 		float tri_z = CubeMesh->tris[i].vecs[j].z;
-		//
-		// 		float new_x = tri_x + 0 + 0;
-		// 		float new_y = tri_x * 0 + tri_y * cos(angle) - tri_z * sin(angle);
-		// 		float new_z = tri_x * 0 + tri_y * sin(angle) + tri_z * cos(angle);
-		//
-		// 		new_x = new_x * cos(angle) + 0 + new_z * sin(angle);
-		// 		new_y = 0 + new_y + 0;
-		// 		new_z = -1 * new_x * sin(angle) + 0 + cos(angle) * new_z;
-		//
-		// 		CubeMesh->tris[i].vecs[j].x = new_x;
-		// 		CubeMesh->tris[i].vecs[j].y = new_y;
-		// 		CubeMesh->tris[i].vecs[j].z = new_z;
-		// 	}
-		// }
-		//
-		// angle += 0.1;
-
-		// DrawLine(23, 20, 30, 32);
 		fflush(stdout);
-
-		// Furthest objects first
-		// drawSquare(-10, -5, 15, 5, 10, 33);
-		// drawSquare(10, -5, 15, 5, 10, 33);
-		//
-		// drawSquare(-10, -5, 10, 5, 10, 32);
-		// drawSquare(10, -5, 10, 5, 10, 32);
-		//
-		// drawSquare(-10, -5, 5, 2, 10, 31);
-		// drawSquare(10, -5, 5, 2, 10, 31);
-
 	}
 
     pthread_exit(NULL);
@@ -444,8 +387,6 @@ Triangle create_triangle(Vec4 v0, Vec4 v1, Vec4 v2) {
     Triangle tri = { {v0, v1, v2} };
     return tri;
 }
-
-int W_DEF = 1;
 
 // Allocate sq_mesh on its own on heap mem
 // Otherwise after the func ends, it frees the obj and pointer is left hanging
@@ -534,47 +475,25 @@ Mesh* get_cube(float x, float y, float side, float z) {
 }
 
 int main() {
-	fFovRad = 1.0f / tanf((fFov * 3.14159f / 180.0f) * 0.5f);
-
-	// double_tris.tris = (Triangle *)malloc(double_tris_size * sizeof(Triangle));
-	// if (double_tris.tris == NULL) {
-	// 	printf("Mem allocation failed!\n");
-	// 	return 1;
-	// }
-	//
-	// double_tris.numTris = double_tris_size;
-	// double_tris.tris[0] = create_triangle(
-	// 	create_vec4(4, 6, 2, 1),
- //        create_vec4(100, 15, 2, 1),
- //        create_vec4(4, 37, 2, 1)
-	// );
-	
-	// double_tris.tris[1] = create_triangle(
-	// 	create_vec4(10, 2, 2, 1),
- //        create_vec4(13, 0, 2, 1),
- //        create_vec4(15, 5, 2, 1)
-	// );
+	// fFovRad = 1.0f / tanf((fFov * 3.14159f / 180.0f) * 0.5f);
+	fFovRad = 1.0f / tanf(fFov * 0.5f / 180.0f * 3.14159f);
 
 	enable_raw_mode();
 	init_window();
 
 	ASPECT_RATIO = (float)Term_Conf.rows / (float)Term_Conf.cols;
+	ASPECT_RATIO = 1601.0 / 2560.0;
 	projection_matrix.m[0][0] = ASPECT_RATIO * fFovRad;
 	projection_matrix.m[1][1] = fFovRad;
 	projection_matrix.m[2][2] = fFar / (fFar - fNear);
-	projection_matrix.m[3][2] = (-fFar * fNear) / (fFar - fNear);
 	projection_matrix.m[2][3] = 1.0f;
-	projection_matrix.m[4][3] = 0.0f;
+	projection_matrix.m[3][2] = (-fFar * fNear) / (fFar - fNear);
+	projection_matrix.m[3][3] = 0.0f;
 
 	srand((unsigned int)time(NULL));
 
 	SquareMesh = get_square(10, 10, 200, 1);
-	CubeMesh = get_cube(230, 60, 20, 1);
-	// for (int i = 0; i < CUBE_TRIANGLE_COUNT; i++) {
-	// 	CubeMesh->tris[i].vecs[0] = mat4_mult_vec4(&projection_matrix, &CubeMesh->tris[i].vecs[0]);
-	// 	CubeMesh->tris[i].vecs[1] = mat4_mult_vec4(&projection_matrix, &CubeMesh->tris[i].vecs[1]);
-	// 	CubeMesh->tris[i].vecs[2] = mat4_mult_vec4(&projection_matrix, &CubeMesh->tris[i].vecs[2]);
-	// }
+	CubeMesh = get_cube(0, 0, 10, -20);
 
 	long read_input_id = 0;
 	pthread_create(&threads[read_input_id], NULL, read_user_input, (void*)read_input_id);
@@ -598,3 +517,15 @@ int main() {
 	free(CubeMesh->tris);
 	free(CubeMesh);
 }
+
+// void animation_old() {
+// 	// Furthest objects first
+// 	// drawSquare(-10, -5, 15, 5, 10, 33);
+// 	// drawSquare(10, -5, 15, 5, 10, 33);
+// 	//
+// 	// drawSquare(-10, -5, 10, 5, 10, 32);
+// 	// drawSquare(10, -5, 10, 5, 10, 32);
+// 	//
+// 	// drawSquare(-10, -5, 5, 2, 10, 31);
+// 	// drawSquare(10, -5, 5, 2, 10, 31);
+// }
