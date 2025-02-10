@@ -113,6 +113,9 @@ void draw_triangle(Triangle* tri) {
 	move_cursor_NO_REASSGN(1, 4);
 	printf("z: %f\nw: %f\n", new_tri_1.z, new_tri_1.w);
 
+	// NOTE: Updating the xyz wrt the w (or z) breaks it. idk whats wrong
+	// Heads up future self :D
+
 	// if (new_tri_1.w != 0.0f) {
 	// 	new_tri_1.x /= new_tri_1.w;
 	// 	new_tri_1.y /= new_tri_1.w;
