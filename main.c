@@ -14,15 +14,18 @@
 #define NUM_THREADS 3
 #define SQUARE_TRIANGLE_COUNT 2
 #define CUBE_TRIANGLE_COUNT 12
+#define vec1 vecs[0]
+#define vec2 vecs[1]
+#define vec3 vecs[2]
 
 // homogeneous 4D vector
 typedef struct {
-	float x, y, z, w;
+	double x, y, z, w;
 } Vec4 ;
 
 // 4x4 matrix
 typedef struct {
-	float m[4][4];
+	double m[4][4];
 } Mat4;
 
 typedef struct {
@@ -52,46 +55,79 @@ Vec4 mat4_mult_vec4(const Mat4* mat, const Vec4* vec) {
 	return result;
 }
 
+Vec4 mat4_mult_vec4_2(const Mat4* mat, const Vec4* vec) {
+	Vec4 result;
+
+	result.x = vec->x * mat->m[0][0] + vec->y * mat->m[0][1] + vec->z * mat->m[0][2] + vec->w * mat->m[0][3];
+	result.y = vec->x * mat->m[1][0] + vec->y * mat->m[1][1] + vec->z * mat->m[1][2] + vec->w * mat->m[1][3];
+	result.z = vec->x * mat->m[2][0] + vec->y * mat->m[2][1] + vec->z * mat->m[2][2] + vec->w * mat->m[2][3];
+	result.w = vec->x * mat->m[3][0] + vec->y * mat->m[3][1] + vec->z * mat->m[3][2] + vec->w * mat->m[3][3];
+
+	// if (result.z <= 0.9f) {
+	// 	result.z = 0.9f;
+	// }
+
+	return result;
+}
+
 int STOP_READING = 1;
+int PAUSE_LOOP = 1;
+int debug_on = 1;
+
 pthread_t threads[NUM_THREADS];
 pthread_mutex_t mutex;
 
 int D_DIST = 1;
 int W_DEF = 1;
-float ASPECT_RATIO;
+double ASPECT_RATIO;
 double FOV_ANGLE = 90;
 double FOV;
 double Z_NORM;
-float fNear = 0.1f;
-float fFar = 1000.0f;
-float fFov = 45.0f;
-float fFovRad;
+double fNear = 0.1f;
+double fFar = 1000.0f;
+double fFov = 90.0f;
+double fFovRad;
 Mat4 projection_matrix = { 0 };
 
+// Convert to cartesian coordinates
+// Works with int. Idk if that bad
+void conv_from_cart(int x, int y, int* ox, int* oy)  {
+	*ox = x + (int)Term_Conf.cols / 2;
+	*oy = (-1 * y) + (int)Term_Conf.rows / 2;
+}
+
+// Print character from cartesian coord
+// Converts cartesian to whatever this is bruh idk
+void print_from_cart(double ix, double iy) {
+	int ox, oy;
+	conv_from_cart(ix, iy, &ox, &oy);
+
+	pthread_mutex_lock(&mutex);
+	move_cursor_NO_REASSGN(ox, oy);
+	printf("#");
+	pthread_mutex_unlock(&mutex);
+}
+
 void DrawLine(int x1, int y1, int x2, int y2) {
-	// Calculate the differences
     int dx = abs(x2 - x1);
     int dy = abs(y2 - y1);
 
-    int sx = (x1 < x2) ? 1 : -1;  // step in x direction
-    int sy = (y1 < y2) ? 1 : -1;  // step in y direction
+    int sx = (x1 < x2) ? 1 : -1;
+    int sy = (y1 < y2) ? 1 : -1;
 
-    int err = dx - dy;  // initial error term
-
-    // Use a for loop to replace the while loop
-    // We iterate through x or y for the total number of steps
-    int maxIter = (dx > dy) ? dx : dy;  // The number of steps is the larger of dx or dy
+    int err = dx - dy;
+    int maxIter = (dx > dy) ? dx : dy;
 
     for (int i = 0; i <= maxIter; i++) {
-        // Plot the point (x1, y1)
-        // printf("Plotting pixel at (%d, %d)\n", x1, y1);
+        int t_x = x1 + Term_Conf.cols / 2;
+        int t_y = (-1 * y1) + Term_Conf.rows / 2;
 
-		int t_x = x1 + Term_Conf.cols / 2;
-		int t_y = (-1 * y1) + Term_Conf.rows / 2;
-		move_cursor_NO_REASSGN(t_x, t_y);
-		printf("#");
+        // Boundary check before drawing
+        if (t_x >= 0 && t_x < Term_Conf.cols && t_y >= 0 && t_y < Term_Conf.rows) {
+            move_cursor_NO_REASSGN(t_x, t_y);
+            printf("*");
+        }
 
-        // Calculate error
         int e2 = err * 2;
 
         if (e2 > -dy) {
@@ -103,43 +139,13 @@ void DrawLine(int x1, int y1, int x2, int y2) {
             err += dx;
             y1 += sy;
         }
-    }}
+    }
+}
 
 void draw_triangle(Triangle* tri) {
-	Vec4 new_tri_1 = mat4_mult_vec4(&projection_matrix, &tri->vecs[0]);
-	Vec4 new_tri_2 = mat4_mult_vec4(&projection_matrix, &tri->vecs[1]);
-	Vec4 new_tri_3 = mat4_mult_vec4(&projection_matrix, &tri->vecs[2]);
-
-	move_cursor_NO_REASSGN(1, 4);
-	printf("z: %f\nw: %f\n", new_tri_1.z, new_tri_1.w);
-
-	// NOTE: Updating the xyz wrt the w (or z) breaks it. idk whats wrong
-	// Heads up future self :D
-
-	// if (new_tri_1.w != 0.0f) {
-	// 	new_tri_1.x /= new_tri_1.w;
-	// 	new_tri_1.y /= new_tri_1.w;
-	// 	new_tri_1.z /= new_tri_1.w;
-	// }
-	//
-	// if (new_tri_2.w != 0.0f) {
-	// 	new_tri_2.x /= new_tri_2.w;
-	// 	new_tri_2.y /= new_tri_2.w;
-	// 	new_tri_2.z /= new_tri_2.w;
-	// }
-	//
-	// if (new_tri_3.w != 0.0f) {
-	// 	new_tri_3.x /= new_tri_3.w;
-	// 	new_tri_3.y /= new_tri_3.w;
-	// 	new_tri_3.z /= new_tri_3.w;
-	// }
-
-	DrawLine(new_tri_1.x, new_tri_1.y, new_tri_2.x, new_tri_2.y);
-	DrawLine(new_tri_2.x, new_tri_2.y, new_tri_3.x, new_tri_3.y);
-	DrawLine(new_tri_3.x, new_tri_3.y, new_tri_1.x, new_tri_1.y);
-	// DrawLine(tri->vecs[0].x, tri->vecs[0].y, tri->vecs[1].x, tri->vecs[1].y);
-	// DrawLine(tri->vecs[1].x, tri->vecs[1].y, tri->vecs[2].x, tri->vecs[2].y);
-	// DrawLine(tri->vecs[2].x, tri->vecs[2].y, tri->vecs[0].x, tri->vecs[0].y);
+	DrawLine(tri->vecs[0].x, tri->vecs[0].y, tri->vecs[1].x, tri->vecs[1].y);
+	DrawLine(tri->vecs[1].x, tri->vecs[1].y, tri->vecs[2].x, tri->vecs[2].y);
+	DrawLine(tri->vecs[2].x, tri->vecs[2].y, tri->vecs[0].x, tri->vecs[0].y);
 }
 
 void init_thread() {
@@ -213,6 +219,9 @@ void* read_user_input(void* thread_id) {
 		switch (c) {
 			case 'q':
 				STOP_READING = 0;
+
+			case 'n':
+				PAUSE_LOOP = 0;
 
 			case 'w':
 				if (W_DEF >= 0) {
@@ -298,51 +307,131 @@ void* read_ms_input(void* thread_id) {
 	pthread_exit(NULL);
 }
 
-void rotate_x(float* x, float* y, float* z, float angle) {
-	float new_y = *y * cos(angle) - *z * sin(angle);
-	float new_z = *y * sin(angle) + *z * cos(angle);
+// Should NOT update the points in place
+// Return the new point to be drawn
+Vec4 rotate_xyz(Vec4* v, double ax, double ay, double az) {
+    double x = v->x;
+    double y = v->y;
+    double z = v->z;
+
+    // Rotate X
+    double cosx = cosf(ax);
+    double sinx = sinf(ax);
+    double y1 = y * cosx - z * sinx;
+    double z1 = y * sinx + z * cosx;
+
+    // Rotate Y
+    double cosy = cosf(ay);
+    double siny = sinf(ay);
+    double x2 = x * cosy + z1 * siny;
+    double z2 = -x * siny + z1 * cosy;
+
+    // Rotate Z
+    double cosz = cosf(az);
+    double sinz = sinf(az);
+    double x3 = x2 * cosz - y1 * sinz;
+    double y3 = x2 * sinz + y1 * cosz;
+
+    Vec4 result;
+    result.x = x3;
+    result.y = y3;
+    result.z = z2;
+    result.w = v->w;
+
+    return result;
+}
+
+
+void rotate_x(double* x, double* y, double* z, double angle) {
+	double new_y = *y * cos(angle) - *z * sin(angle);
+	double new_z = *y * sin(angle) + *z * cos(angle);
 
 	*y = new_y;
 	*z = new_z;
 }
 
-void rotate_y(float* x, float* y, float* z, float angle) {
-    float new_x = *x * cos(angle) + *z * sin(angle);
-    float new_z = -(*x) * sin(angle) + *z * cos(angle);
+void rotate_y(double* x, double* y, double* z, double angle) {
+    double new_x = *x * cos(angle) + *z * sin(angle);
+    double new_z = -(*x) * sin(angle) + *z * cos(angle);
 
     *x = new_x;
     *z = new_z;
 }
 
-void rotate_z(float* x, float* y, float* z, float angle) {
-    float new_x = *x * cos(angle) - *y * sin(angle);
-    float new_y = *x * sin(angle) + *y * cos(angle);
+void rotate_z(double* x, double* y, double* z, double angle) {
+    double new_x = *x * cos(angle) - *y * sin(angle);
+    double new_y = *x * sin(angle) + *y * cos(angle);
 
     *x = new_x;
     *y = new_y;
 }
 
+void rotate_triangle(Triangle* tri, double ax, double ay, double az) {
+	for (int j = 0; j < 3; j++) {
+		tri->vecs[j] = rotate_xyz(&tri->vecs[j], ax, ay, az);
+
+	}
+}
+
+void translate_triangle(Triangle* tri, double val) {
+	for (int j = 0; j < 3; j++) {
+		tri->vecs[j].z += val;
+	}
+}
+
+void project_triangle(Triangle* tri) {
+	tri->vecs[0] = mat4_mult_vec4_2(&projection_matrix, &tri->vecs[0]);
+	tri->vecs[1] = mat4_mult_vec4_2(&projection_matrix, &tri->vecs[1]);
+	tri->vecs[2] = mat4_mult_vec4_2(&projection_matrix, &tri->vecs[2]);
+}
+
+void normalise_triangle(Triangle* tri) {
+	for (int i = 0; i < 3; i++) {
+		// if (fabs(tri->vecs[i].w) < 0.01f) {
+		// 	continue;
+		// }
+
+		// move_cursor_NO_REASSGN(0, 14);
+		// printf("inside func 1: %f, %f, %f, %f", tri->vecs[0].x, tri->vecs[0].y, tri->vecs[0].z, tri->vecs[0].w);
+		if (tri->vecs[i].w != 0.0f) {
+			// Full perspective divide FIRST
+			tri->vecs[i].x /= tri->vecs[i].w;
+			tri->vecs[i].y /= tri->vecs[i].w;
+			tri->vecs[i].z /= tri->vecs[i].w;
+			tri->vecs[i].w /= tri->vecs[i].w;
+		}
+		// move_cursor_NO_REASSGN(0, 15);
+		// printf("inside func 2: %f, %f, %f, %f", tri->vecs[0].x, tri->vecs[0].y, tri->vecs[0].z, tri->vecs[0].w);
+	}
+}
+
+void dump_vertex_to_debug_file(Triangle* tri, int val) {
+    FILE* debugFile = fopen("debug.txt", "a");
+    if (debugFile == NULL) {
+        perror("Failed to open debug file");
+        exit(1);
+    }
+
+    // Write vertex 0
+    fprintf(debugFile, "WHICH %d: x=%f, y=%f, z=%f, w=%f\n", val,
+            tri->vecs[0].x, tri->vecs[0].y, tri->vecs[0].z, tri->vecs[0].w);
+
+    fclose(debugFile);
+}
+
 void* animation(void* thread_id) {
-	double degrees = 1.0;
-    double radians = degrees * M_PI / 180.0;
-	double x_s = 0;
-	double sq_side = 10;
-	double z_s = 5.0;
-
-	Vec4 init_p = {20, 20, 10, 1};
-	Vec4 init_p_trans = mat4_mult_vec4(&projection_matrix, &init_p);
-
-	Point3D sq1[4] = {
-		{x_s, x_s, z_s},
-		{x_s + sq_side, x_s, z_s},
-		{x_s, x_s + sq_side, z_s},
-		{x_s + sq_side, x_s + sq_side, z_s},
-	};
-
-	float angle = 10 * (3.14159 / 180);
+	// sinf and cosf work with degrees instead of radians
+	double angle = 120.0f;
+	// double angle_rad = angle * (M_PI / 180.0f);
+	// double angle2 = 5 * (3.14159 / 180);
+	// angle_rad = angle;
 
 	while (STOP_READING) {
-		usleep(100000);
+		if (PAUSE_LOOP && debug_on && 0) {
+			continue;
+		}
+
+		usleep(5000);
 		clear_screen();
 
 		pthread_mutex_lock(&mutex);
@@ -353,39 +442,78 @@ void* animation(void* thread_id) {
 		fflush(stdout);
 		pthread_mutex_unlock(&mutex);
 
-		for (int i = 0; i < CubeMesh->numTris; i++) {
-			draw_triangle(&CubeMesh->tris[i]);
-		}
+		print_from_cart(0, 0);
 
 		// get rotated idiot
 		for (int i = 0; i < CubeMesh->numTris; i++) {
-			for (int j = 0; j < 3; j++) {
-				rotate_x(&CubeMesh->tris[i].vecs[j].x, 
-						&CubeMesh->tris[i].vecs[j].y, 
-						&CubeMesh->tris[i].vecs[j].z, angle);
-
-				rotate_y(&CubeMesh->tris[i].vecs[j].x, 
-						&CubeMesh->tris[i].vecs[j].y, 
-						&CubeMesh->tris[i].vecs[j].z, angle);
-
-				// rotate_z(&CubeMesh->tris[i].vecs[j].x, 
-				// 		&CubeMesh->tris[i].vecs[j].y, 
-				// 		&CubeMesh->tris[i].vecs[j].z, angle);
-
+			Triangle tri_updated = CubeMesh->tris[i];
+			if (i == 0) {
+				move_cursor_NO_REASSGN(0, 6);
+				printf("original: %f, %f, %f, %f", tri_updated.vecs[0].x, tri_updated.vecs[0].y, tri_updated.vecs[0].z, tri_updated.vecs[0].w);
 			}
+
+			if (i == 0) {
+				dump_vertex_to_debug_file(&tri_updated, 0);
+			}
+			rotate_triangle(&tri_updated, angle, angle * 0.5, angle * 0.33);
+			if (i == 0) {
+				move_cursor_NO_REASSGN(0, 7);
+				printf("rotated: %f, %f, %f, %f", tri_updated.vecs[0].x, tri_updated.vecs[0].y, tri_updated.vecs[0].z, tri_updated.vecs[0].w);
+				dump_vertex_to_debug_file(&tri_updated, 1);
+			}
+
+			translate_triangle(&tri_updated, 0);
+			if (i == 0) {
+				move_cursor_NO_REASSGN(0, 8);
+				printf("translated: %f, %f, %f, %f", tri_updated.vecs[0].x, tri_updated.vecs[0].y, tri_updated.vecs[0].z, tri_updated.vecs[0].w);
+			}
+
+			project_triangle(&tri_updated);
+			if (i == 0) {
+				move_cursor_NO_REASSGN(0, 9);
+				printf("projected: %f, %f, %f, %f", tri_updated.vecs[0].x, tri_updated.vecs[0].y, tri_updated.vecs[0].z, tri_updated.vecs[0].w);
+			}
+
+			if (i == 0) {
+				move_cursor_NO_REASSGN(0, 12);
+				printf("z: %f", tri_updated.vecs[0].z);
+			}
+
+			normalise_triangle(&tri_updated);
+			if (i == 0) {
+				move_cursor_NO_REASSGN(0, 10);
+				printf("normalised: %f, %f, %f, %f", tri_updated.vecs[0].x, tri_updated.vecs[0].y, tri_updated.vecs[0].z, tri_updated.vecs[0].w);
+			}
+
+			if (i == 0) {
+				move_cursor_NO_REASSGN(0, 16);
+				printf("angle: %f", angle);
+				move_cursor_NO_REASSGN(0, 17);
+				printf("angle (radians): %f", angle);
+
+				move_cursor_NO_REASSGN(0, 13);
+				printf("w: %f", tri_updated.vecs[0].w);
+			}
+
+			draw_triangle(&tri_updated);
 		}
 
+		angle += 0.02;
+
 		fflush(stdout);
+
+		if (debug_on) {
+			PAUSE_LOOP = 1;
+		}
 	}
 
     pthread_exit(NULL);
 }
 
-Vec4 create_vec4(float x, float y, float z, float w) {
+Vec4 create_vec4(double x, double y, double z, double w) {
 	Vec4 vec = {x, y, z, w};
 	return vec;
 }
-
 Triangle create_triangle(Vec4 v0, Vec4 v1, Vec4 v2) {
     Triangle tri = { {v0, v1, v2} };
     return tri;
@@ -393,7 +521,7 @@ Triangle create_triangle(Vec4 v0, Vec4 v1, Vec4 v2) {
 
 // Allocate sq_mesh on its own on heap mem
 // Otherwise after the func ends, it frees the obj and pointer is left hanging
-Mesh* get_square(float x, float y, float side, float z) {
+Mesh* get_square(double x, double y, double side, double z) {
 	Mesh* sq_mesh = (Mesh *)malloc(sizeof(Mesh));
 	if (sq_mesh == NULL) {
 		printf("Mem allocation failed!\n");
@@ -425,7 +553,7 @@ Mesh* get_square(float x, float y, float side, float z) {
 	return sq_mesh;
 }
 
-Mesh* get_cube(float x, float y, float side, float z) {
+Mesh* get_cube(double x, double y, double z, double side) {
     // Allocate memory for the cube
     Mesh* cube_mesh = (Mesh *)malloc(sizeof(Mesh));
     if (cube_mesh == NULL) {
@@ -477,26 +605,99 @@ Mesh* get_cube(float x, float y, float side, float z) {
     return cube_mesh;
 }
 
-int main() {
-	// fFovRad = 1.0f / tanf((fFov * 3.14159f / 180.0f) * 0.5f);
-	fFovRad = 1.0f / tanf(fFov * 0.5f / 180.0f * 3.14159f);
+void* foo(void* thread_id) {
+    pthread_exit(NULL);
+}
 
-	enable_raw_mode();
-	init_window();
+void init_projection_mat() {
+	fFovRad = 1.0f / tanf(fFov * 0.5f / 180.0f * M_PI);
+	ASPECT_RATIO = (double)Term_Conf.rows / (double)Term_Conf.cols;
 
-	ASPECT_RATIO = (float)Term_Conf.rows / (float)Term_Conf.cols;
-	ASPECT_RATIO = 1601.0 / 2560.0;
+	// printf("ffovrad: %f\n", ASPECT_RATIO);
+	// ASPECT_RATIO = 1601.0 / 2560.0;
 	projection_matrix.m[0][0] = ASPECT_RATIO * fFovRad;
 	projection_matrix.m[1][1] = fFovRad;
-	projection_matrix.m[2][2] = fFar / (fFar - fNear);
-	projection_matrix.m[2][3] = 1.0f;
-	projection_matrix.m[3][2] = (-fFar * fNear) / (fFar - fNear);
+	projection_matrix.m[2][2] = (fFar + fNear) / (fNear - fFar);
+	// projection_matrix.m[2][3] = 1.0f;
+	projection_matrix.m[2][3] = (2 * fFar * fNear) / (fNear - fFar);
+	// projection_matrix.m[3][2] = (-fFar * fNear) / (fFar - fNear);
+	projection_matrix.m[3][2] = -1.0f;
 	projection_matrix.m[3][3] = 0.0f;
+	
+}
+
+void debug_funcs() {
+	Vec4 v1 = {-10, -10, -10, 1};
+	Vec4 v2;
+	double angle = 98.0f;
+	double angle_rad = angle * (M_PI / 180.0f);
+	angle_rad = angle;
+
+	printf("original: x: %f y: %f z: %f w: %f\n", v1.x, v1.y, v1.z, v1.w);
+	v2 = rotate_xyz(&v1, angle_rad, angle_rad, angle_rad);
+	printf("rotated: x: %f y: %f z: %f w: %f\n", v2.x, v2.y, v2.z, v2.w);
+	// translate
+	v2.z += 3;
+	printf("translated: x: %f y: %f z: %f w: %f\n", v2.x, v2.y, v2.z, v2.w);
+
+	v2 = mat4_mult_vec4_2(&projection_matrix, &v2);
+	printf("projected: x: %f y: %f z: %f w: %f\n", v2.x, v2.y, v2.z, v2.w);
+
+	v2.x /= v2.w;
+	v2.y /= v2.w;
+	v2.z /= v2.w;
+	v2.w /= v2.w;
+
+	printf("Final: x: %f y: %f\n", v2.x, v2.y);
+	return;
+}
+
+int main() {
+	int debug_funcs_bool = 1;
+	int rows;
+	int cols;
+
+	switch (debug_funcs_bool) {
+		case 0:
+			if (get_terminal_size(&rows, &cols) == -1) {
+				die("get_terminal_size");
+				return 0;
+			}
+
+			Term_Conf.rows = rows;
+			Term_Conf.cols = cols;
+
+			printf("Rows %d\n", Term_Conf.rows);
+			printf("Cols %d\n", Term_Conf.cols);
+
+			init_projection_mat();
+
+			printf("PROJECTION\n");
+			printf("--\n");
+			for (int i = 0; i < 4; i++) {
+				printf("%f %f %f %f\n", projection_matrix.m[i][0], projection_matrix.m[i][1], projection_matrix.m[i][2], projection_matrix.m[i][3]);
+			}
+			printf("--\n");
+
+			debug_funcs();
+			return 0;
+
+		case 1:
+			enable_raw_mode();
+			init_window();
+	}
+
+	init_projection_mat();
 
 	srand((unsigned int)time(NULL));
 
 	SquareMesh = get_square(10, 10, 200, 1);
-	CubeMesh = get_cube(0, 0, 10, -20);
+	CubeMesh = get_cube(-20, -20, -20, 40);
+	for (int i = 0; i < CubeMesh->numTris; i++) {
+		printf("[%f, %f, %f, %f] ", CubeMesh->tris[i].vecs[0].x, CubeMesh->tris[i].vecs[0].x, CubeMesh->tris[i].vecs[0].z, CubeMesh->tris[i].vecs[0].w);
+		printf("[%f, %f, %f, %f] ", CubeMesh->tris[i].vecs[1].x, CubeMesh->tris[i].vecs[1].x, CubeMesh->tris[i].vecs[1].z, CubeMesh->tris[i].vecs[1].w);
+		printf("[%f, %f, %f, %f]\n", CubeMesh->tris[i].vecs[2].x, CubeMesh->tris[i].vecs[2].x, CubeMesh->tris[i].vecs[2].z, CubeMesh->tris[i].vecs[2].w);
+	}
 
 	long read_input_id = 0;
 	pthread_create(&threads[read_input_id], NULL, read_user_input, (void*)read_input_id);
