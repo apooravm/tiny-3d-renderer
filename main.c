@@ -86,7 +86,7 @@ pthread_t threads[NUM_THREADS];
 pthread_mutex_t mutex;
 
 int D_DIST = 1;
-int W_DEF = 1;
+double W_DEF = 1;
 double ASPECT_RATIO;
 double FOV_ANGLE = 90;
 double FOV;
@@ -95,6 +95,9 @@ double fNear = 0.1f;
 double fFar = 1000.0f;
 double fFov = 90.0f;
 double fFovRad;
+double cam_x = 0;
+double cam_y = 0;
+double cam_z = 0.2;
 Mat4 projection_matrix = {0};
 
 // Convert to cartesian coordinates
@@ -280,37 +283,47 @@ void *read_user_input(void *thread_id) {
     case 'n':
       PAUSE_LOOP = 0;
 
+    case 'a':
+      cam_x -= 0.05;
+      break;
+
+    case 'd':
+      cam_x += 0.05;
+      break;
+
     case 'w':
-      if (W_DEF >= 0) {
-        W_DEF += 1;
-      }
-      if (Term_Conf.cursor_pos_y > 1) {
-        pos_y--;
-      }
+      // if (W_DEF >= 0) {
+      //   W_DEF += 1;
+      // }
+      // if (Term_Conf.cursor_pos_y > 1) {
+      //   pos_y--;
+      // }
+      cam_z -= 0.05;
       break;
       // printf("W pressed\n");
 
     case 's':
-      if (W_DEF > 0) {
-        W_DEF -= 1;
-      }
-      if (Term_Conf.cursor_pos_y < Term_Conf.HEIGHT) {
-        pos_y++;
-      }
+      cam_z += 0.05;
+      // if (W_DEF > 0) {
+      //   W_DEF -= 1;
+      // }
+      // if (Term_Conf.cursor_pos_y < Term_Conf.HEIGHT) {
+      //   pos_y++;
+      // }
       break;
       // printf("S pressed\n");
 
-    case 'd':
-      if (Term_Conf.cursor_pos_x < Term_Conf.WIDTH) {
-        pos_x++;
-      }
-      break;
-
-    case 'a':
-      if (Term_Conf.cursor_pos_x > 1) {
-        pos_x--;
-      }
-      break;
+      // case 'd':
+      //   if (Term_Conf.cursor_pos_x < Term_Conf.WIDTH) {
+      //     pos_x++;
+      //   }
+      //   break;
+      //
+      // case 'a':
+      //   if (Term_Conf.cursor_pos_x > 1) {
+      //     pos_x--;
+      //   }
+      //   break;
     }
 
     if (!STOP_READING) {
@@ -428,9 +441,12 @@ void rotate_triangle(Triangle *tri, double ax, double ay, double az) {
   }
 }
 
-void translate_triangle(Triangle *tri, double val) {
+void translate_triangle(Triangle *tri, double cam_x, double cam_y,
+                        double cam_z) {
   for (int j = 0; j < 3; j++) {
-    tri->vecs[j].z += val;
+    tri->vecs[j].x += cam_x;
+    tri->vecs[j].y += cam_y;
+    tri->vecs[j].z += cam_z;
   }
 }
 
@@ -479,6 +495,7 @@ void dump_vertex_to_debug_file(Triangle *tri, int val) {
 void *animation(void *thread_id) {
   // sinf and cosf work with degrees instead of radians
   double angle = 120.0f;
+  int display_debug_info = 0;
   // double angle_rad = angle * (M_PI / 180.0f);
   // double angle2 = 5 * (3.14159 / 180);
   // angle_rad = angle;
@@ -491,31 +508,33 @@ void *animation(void *thread_id) {
     usleep(5000);
     clear_screen();
 
-    pthread_mutex_lock(&mutex);
-    move_cursor_NO_REASSGN(1, 1);
-    printf("WIDTH: %d; HEIGHT: %d", Term_Conf.WIDTH, Term_Conf.HEIGHT);
-    move_cursor_NO_REASSGN(1, 2);
-    printf("DIST %d", W_DEF);
-    fflush(stdout);
-    pthread_mutex_unlock(&mutex);
+    if (display_debug_info) {
+      pthread_mutex_lock(&mutex);
+      move_cursor_NO_REASSGN(1, 1);
+      printf("WIDTH: %d; HEIGHT: %d", Term_Conf.WIDTH, Term_Conf.HEIGHT);
+      move_cursor_NO_REASSGN(1, 2);
+      printf("DIST %f", W_DEF);
+      fflush(stdout);
+      pthread_mutex_unlock(&mutex);
 
-    print_from_cart(0, 0);
+      print_from_cart(0, 0);
+    }
 
     // get rotated idiot
     for (int i = 0; i < CubeMesh->numTris; i++) {
       Triangle tri_updated = CubeMesh->tris[i];
-      if (i == 0) {
+      if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 6);
         printf("original: %f, %f, %f, %f", tri_updated.vecs[0].x,
                tri_updated.vecs[0].y, tri_updated.vecs[0].z,
                tri_updated.vecs[0].w);
       }
 
-      if (i == 0) {
+      if (i == 0 && display_debug_info) {
         dump_vertex_to_debug_file(&tri_updated, 0);
       }
-      rotate_triangle(&tri_updated, angle, angle * 0.5, angle * 0.33);
-      if (i == 0) {
+      rotate_triangle(&tri_updated, angle, angle * 0.2, angle * 0.33);
+      if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 7);
         printf("rotated: %f, %f, %f, %f", tri_updated.vecs[0].x,
                tri_updated.vecs[0].y, tri_updated.vecs[0].z,
@@ -523,8 +542,8 @@ void *animation(void *thread_id) {
         dump_vertex_to_debug_file(&tri_updated, 1);
       }
 
-      translate_triangle(&tri_updated, 1.0);
-      if (i == 0) {
+      translate_triangle(&tri_updated, cam_x, cam_y, cam_z);
+      if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 8);
         printf("translated: %f, %f, %f, %f", tri_updated.vecs[0].x,
                tri_updated.vecs[0].y, tri_updated.vecs[0].z,
@@ -532,27 +551,27 @@ void *animation(void *thread_id) {
       }
 
       project_triangle(&tri_updated);
-      if (i == 0) {
+      if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 9);
         printf("projected: %f, %f, %f, %f", tri_updated.vecs[0].x,
                tri_updated.vecs[0].y, tri_updated.vecs[0].z,
                tri_updated.vecs[0].w);
       }
 
-      if (i == 0) {
+      if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 12);
         printf("z: %f", tri_updated.vecs[0].z);
       }
 
       normalise_triangle(&tri_updated);
-      if (i == 0) {
+      if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 10);
         printf("normalised: %f, %f, %f, %f", tri_updated.vecs[0].x,
                tri_updated.vecs[0].y, tri_updated.vecs[0].z,
                tri_updated.vecs[0].w);
       }
 
-      if (i == 0) {
+      if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 16);
         printf("angle: %f", angle);
         move_cursor_NO_REASSGN(0, 17);
@@ -759,7 +778,7 @@ int main() {
   srand((unsigned int)time(NULL));
 
   SquareMesh = get_square(10, 10, 200, 1);
-  CubeMesh = get_cube(0, 0, 0, 0.5);
+  CubeMesh = get_cube(0, 0, 0.2, 0.5);
   for (int i = 0; i < CubeMesh->numTris; i++) {
     printf("[%f, %f, %f, %f] ", CubeMesh->tris[i].vecs[0].x,
            CubeMesh->tris[i].vecs[0].x, CubeMesh->tris[i].vecs[0].z,
