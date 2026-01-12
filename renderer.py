@@ -23,6 +23,9 @@ edges = [
 
 def make_projection_matrix(fov, aspect, near, far):
     f = 1 / math.tan(fov / 2)
+    print(f"aspect {aspect}")
+    print(f"ffov {f}")
+    print(f"ffov/aspect {f/aspect}")
     return [
         [f/aspect, 0, 0, 0],
         [0, f, 0, 0],
@@ -167,8 +170,11 @@ if __name__ == "__main__":
 if __name__ == "__main__":
     # width = curses.COLS
     # height = curses.LINES
-    width = 132
-    height = 40
+    width = 156
+    height = 47
+
+    print("rows", height)
+    print("cols", width)
 
     fov = math.radians(90)
     aspect = width / height
@@ -217,7 +223,7 @@ if __name__ == "__main__":
     print("--")
 
     v1 = [-10, -10, -10, 1]
-    angle = 98
+    angle = 120
     rotated = rotate_xyz(v1, angle, angle, angle)
 
     # Move cube forward in Z
@@ -236,6 +242,9 @@ if __name__ == "__main__":
     # # Convert to screen coordinates
     # x = int((projected[0] + 1) * width / 2)
     # y = int((1 - projected[1]) * height / 2)
+
+    for x in projection:
+        print(x)
 
     print(f"original x: {v1[0]} y: {v1[1]} z: {v1[2]} w: {v1[3]}")
     print(f"rotated x: {rotated[0]} y: {rotated[1]} z: {rotated[2]} w: {rotated[3]}")

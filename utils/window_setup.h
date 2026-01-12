@@ -5,8 +5,8 @@
 
 // Terminal configuration structure
 typedef struct {
-    int rows;
-    int cols;
+    int HEIGHT;
+    int WIDTH;
     int cursor_pos_x;
     int cursor_pos_y;
     int ms_pos_x;

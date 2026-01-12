@@ -16,8 +16,8 @@
 #define DISABLE_MS "[?1003l" // disable ms reporting mode
 
 typedef struct {
-	int rows;
-	int cols;
+	int HEIGHT;
+	int WIDTH;
 	int cursor_pos_x;
 	int cursor_pos_y;
 	int ms_pos_x;
@@ -49,12 +49,12 @@ void disable_virtual_window() {
 }
 
 double translateX(double x) {
-	double val = x + (Term_Conf.cols / 2.0);
+	double val = x + (Term_Conf.WIDTH / 2.0);
 	return val;
 }
 
 double translateY(double y) {
-	double val = (Term_Conf.rows / 2.0) - y;
+	double val = (Term_Conf.HEIGHT / 2.0) - y;
 	if (val < 0) {
 		return val * -1;
 	}
