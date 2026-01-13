@@ -108,8 +108,8 @@ double fFovRad;
 // double cam_x = 0;
 // double cam_y = 0;
 // double cam_z = 0.2;
-Camera camera = {{0, 0, 1.0}, 1.0, 1.0};
-double CAM_SENSITIVITY = 0.002f;
+Camera camera = {{0, 0, 2.0}, 1.0, 1.0};
+double CAM_SENSITIVITY = 0.02f;
 Mat4 projection_matrix = {0};
 
 // Convert to cartesian coordinates
@@ -285,6 +285,14 @@ void *read_user_input(void *thread_id) {
     case 'n':
       PAUSE_LOOP = 0;
 
+    case 'i':
+      camera.pos.x -= 0.05;
+      break;
+
+    case 'o':
+      camera.pos.x += 0.05;
+      break;
+
     case 'a':
       camera.pos.x -= 0.05;
       break;
@@ -300,12 +308,12 @@ void *read_user_input(void *thread_id) {
       // if (Term_Conf.cursor_pos_y > 1) {
       //   pos_y--;
       // }
-      camera.pos.z -= 0.05;
+      camera.pos.y += 0.05;
       break;
       // printf("W pressed\n");
 
     case 's':
-      camera.pos.z += 0.05;
+      camera.pos.y -= 0.05;
       // if (W_DEF > 0) {
       //   W_DEF -= 1;
       // }
@@ -515,7 +523,7 @@ void camera_movement(Triangle *tri) {
     tri->vecs[j].z += camera.pos.z;
   }
 
-  rotate_triangle(tri, camera.pitch, camera.yaw, 0.0);
+  rotate_triangle(tri, -camera.yaw, -camera.pitch, 0.0);
 }
 
 void dump_vertex_to_debug_file(Triangle *tri, int val) {
@@ -565,6 +573,8 @@ void *animation(void *thread_id) {
     printf("MS-X: %d; MS-Y: %d", Term_Conf.ms_pos_x, Term_Conf.ms_pos_y);
     move_cursor_NO_REASSGN(1, 2);
     printf("MS-DX: %d; MS-DY: %d", Term_Conf.MS_POS_DX, Term_Conf.MS_POS_DY);
+    move_cursor_NO_REASSGN(1, 3);
+    printf("Pitch: %f; Yaw: %f", camera.pitch, camera.yaw);
     pthread_mutex_unlock(&mutex);
 
     // get rotated idiot
