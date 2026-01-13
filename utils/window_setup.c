@@ -22,6 +22,8 @@ typedef struct {
 	int cursor_pos_y;
 	int ms_pos_x;
 	int ms_pos_y;
+	int MS_POS_DX; // change in x since last mouse movement
+	int MS_POS_DY; // change in y since last mouse movement
 	struct termios original_state;
 } terminal_conf;
 

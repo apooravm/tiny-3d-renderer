@@ -18,6 +18,10 @@
 #define vec2 vecs[1]
 #define vec3 vecs[2]
 
+typedef struct {
+  double x, y, z;
+} Vec3;
+
 // homogeneous 4D vector
 typedef struct {
   double x, y, z, w;
@@ -36,6 +40,12 @@ typedef struct {
   Triangle *tris;
   size_t numTris;
 } Mesh;
+
+typedef struct {
+  Vec3 pos;
+  double yaw;
+  double pitch;
+} Camera;
 
 Mesh double_tris;
 size_t double_tris_size = 1;
@@ -95,9 +105,11 @@ double fNear = 0.1f;
 double fFar = 1000.0f;
 double fFov = 90.0f;
 double fFovRad;
-double cam_x = 0;
-double cam_y = 0;
-double cam_z = 0.2;
+// double cam_x = 0;
+// double cam_y = 0;
+// double cam_z = 0.2;
+Camera camera = {{0, 0, 1.0}, 1.0, 1.0};
+double CAM_SENSITIVITY = 0.002f;
 Mat4 projection_matrix = {0};
 
 // Convert to cartesian coordinates
@@ -118,41 +130,6 @@ void print_from_cart(double ix, double iy) {
   printf("#");
   pthread_mutex_unlock(&mutex);
 }
-
-// void DrawLine(int x1, int y1, int x2, int y2) {
-//     int dx = abs(x2 - x1);
-//     int dy = abs(y2 - y1);
-//
-//     int sx = (x1 < x2) ? 1 : -1;
-//     int sy = (y1 < y2) ? 1 : -1;
-//
-//     int err = dx - dy;
-//     int maxIter = (dx > dy) ? dx : dy;
-//
-//     for (int i = 0; i <= maxIter; i++) {
-//         int t_x = x1 + Term_Conf.cols / 2;
-//         int t_y = (-1 * y1) + Term_Conf.rows / 2;
-//
-//         // Boundary check before drawing
-//         if (t_x >= 0 && t_x < Term_Conf.cols && t_y >= 0 && t_y <
-//         Term_Conf.rows) {
-//             move_cursor_NO_REASSGN(t_x, t_y);
-//             printf("*");
-//         }
-//
-//         int e2 = err * 2;
-//
-//         if (e2 > -dy) {
-//             err -= dy;
-//             x1 += sx;
-//         }
-//
-//         if (e2 < dx) {
-//             err += dx;
-//             y1 += sy;
-//         }
-//     }
-// }
 
 static inline int norm_to_screen_x(double x) {
   return (int)((x * 0.5 + 0.5) * (Term_Conf.WIDTH - 1));
@@ -218,9 +195,22 @@ double random_double(double min, double max) {
   return min + (rand() / (double)RAND_MAX) * (max - min);
 }
 
+void enable_mouse() {
+  // Enable SGR mouse mode + motion tracking
+  printf("\033[?1003h\033[?1006h");
+  fflush(stdout);
+}
+
+void disable_mouse() {
+  printf("\033[?1003l\033[?1006l");
+  fflush(stdout);
+}
+
 void init_window() {
   init_thread();
+  enable_mouse();
   atexit(disable_raw_mode);
+  atexit(disable_mouse);
 
   int rows, cols;
   if (get_terminal_size(&rows, &cols) == -1) {
@@ -268,6 +258,18 @@ void draw_circle(int x, int y, int r) {
   }
 }
 
+void log_mouse_pos(int x, int y) {
+  FILE *debugFile = fopen("debug.txt", "a");
+  if (debugFile == NULL) {
+    perror("Failed to open debug file");
+    exit(1);
+  }
+
+  fprintf(debugFile, "MS-X %d, MS-Y %d\n", x, y);
+
+  fclose(debugFile);
+}
+
 void *read_user_input(void *thread_id) {
   char c;
   int pos_x = 5;
@@ -284,11 +286,11 @@ void *read_user_input(void *thread_id) {
       PAUSE_LOOP = 0;
 
     case 'a':
-      cam_x -= 0.05;
+      camera.pos.x -= 0.05;
       break;
 
     case 'd':
-      cam_x += 0.05;
+      camera.pos.x += 0.05;
       break;
 
     case 'w':
@@ -298,12 +300,12 @@ void *read_user_input(void *thread_id) {
       // if (Term_Conf.cursor_pos_y > 1) {
       //   pos_y--;
       // }
-      cam_z -= 0.05;
+      camera.pos.z -= 0.05;
       break;
       // printf("W pressed\n");
 
     case 's':
-      cam_z += 0.05;
+      camera.pos.z += 0.05;
       // if (W_DEF > 0) {
       //   W_DEF -= 1;
       // }
@@ -348,12 +350,14 @@ void *read_user_input(void *thread_id) {
 void *read_ms_input(void *thread_id) {
   char buf[32];
   int nread;
+  int ms_initialized = 0;
 
   while (STOP_READING) {
     nread = read(STDIN_FILENO, buf, sizeof(buf) - 1);
     if (nread <= 0) {
       continue;
     }
+    log_mouse_pos(99, 0);
 
     buf[nread] = '\0';
 
@@ -362,8 +366,34 @@ void *read_ms_input(void *thread_id) {
 
       if (sscanf(&buf[3], "%d;%d;%d", &button, &x, &y) == 3) {
         pthread_mutex_lock(&mutex);
-        Term_Conf.ms_pos_x = x;
-        Term_Conf.ms_pos_y = y;
+        // ms init bool helps not count the first few mouse movements
+        // helps in avoiding the jutter at the start
+        if (!ms_initialized) {
+          Term_Conf.ms_pos_x = x;
+          Term_Conf.ms_pos_y = y;
+          Term_Conf.MS_POS_DX = 0;
+          Term_Conf.MS_POS_DY = 0;
+          ms_initialized = 1;
+
+        } else {
+          Term_Conf.MS_POS_DX = x - Term_Conf.ms_pos_x;
+          Term_Conf.MS_POS_DY = y - Term_Conf.ms_pos_y;
+
+          Term_Conf.ms_pos_x = x;
+          Term_Conf.ms_pos_y = y;
+        }
+
+        camera.yaw += Term_Conf.MS_POS_DX * CAM_SENSITIVITY;
+        camera.pitch += Term_Conf.MS_POS_DY * CAM_SENSITIVITY;
+
+        // clamp so the cam doesnt flip upside down
+        // ±89° in radians
+        if (camera.pitch > 1.55f)
+          camera.pitch = 1.55f;
+        if (camera.pitch < -1.55f)
+          camera.pitch = -1.55f;
+
+        log_mouse_pos(Term_Conf.MS_POS_DX, Term_Conf.MS_POS_DY);
         pthread_mutex_unlock(&mutex);
 
         // Exit on right-click (button == 3)
@@ -478,6 +508,16 @@ void normalise_triangle(Triangle *tri) {
   }
 }
 
+void camera_movement(Triangle *tri) {
+  for (int j = 0; j < 3; j++) {
+    tri->vecs[j].x += camera.pos.x;
+    tri->vecs[j].y += camera.pos.y;
+    tri->vecs[j].z += camera.pos.z;
+  }
+
+  rotate_triangle(tri, camera.pitch, camera.yaw, 0.0);
+}
+
 void dump_vertex_to_debug_file(Triangle *tri, int val) {
   FILE *debugFile = fopen("debug.txt", "a");
   if (debugFile == NULL) {
@@ -520,6 +560,13 @@ void *animation(void *thread_id) {
       print_from_cart(0, 0);
     }
 
+    pthread_mutex_lock(&mutex);
+    move_cursor_NO_REASSGN(1, 1);
+    printf("MS-X: %d; MS-Y: %d", Term_Conf.ms_pos_x, Term_Conf.ms_pos_y);
+    move_cursor_NO_REASSGN(1, 2);
+    printf("MS-DX: %d; MS-DY: %d", Term_Conf.MS_POS_DX, Term_Conf.MS_POS_DY);
+    pthread_mutex_unlock(&mutex);
+
     // get rotated idiot
     for (int i = 0; i < CubeMesh->numTris; i++) {
       Triangle tri_updated = CubeMesh->tris[i];
@@ -533,7 +580,7 @@ void *animation(void *thread_id) {
       if (i == 0 && display_debug_info) {
         dump_vertex_to_debug_file(&tri_updated, 0);
       }
-      rotate_triangle(&tri_updated, angle, angle * 0.2, angle * 0.33);
+      rotate_triangle(&tri_updated, 0, 0 * 0.2, 0 * 0.33);
       if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 7);
         printf("rotated: %f, %f, %f, %f", tri_updated.vecs[0].x,
@@ -542,7 +589,8 @@ void *animation(void *thread_id) {
         dump_vertex_to_debug_file(&tri_updated, 1);
       }
 
-      translate_triangle(&tri_updated, cam_x, cam_y, cam_z);
+      // translate_triangle(&tri_updated, camera.pos.x, camera.pos.y, camera.pos.z);
+      camera_movement(&tri_updated);
       if (i == 0 && display_debug_info) {
         move_cursor_NO_REASSGN(0, 8);
         printf("translated: %f, %f, %f, %f", tri_updated.vecs[0].x,
@@ -798,13 +846,13 @@ int main() {
   long animation_id = 1;
   pthread_create(&threads[animation_id], NULL, animation, (void *)animation_id);
 
-  // long ms_event_id = 2;
-  // pthread_create(&threads[ms_event_id], NULL, read_ms_input,
-  // (void*)ms_event_id);
+  long ms_event_id = 2;
+  pthread_create(&threads[ms_event_id], NULL, read_ms_input,
+                 (void *)ms_event_id);
 
   pthread_join(threads[read_input_id], NULL);
   pthread_join(threads[animation_id], NULL);
-  // pthread_join(threads[ms_event_id], NULL);
+  pthread_join(threads[ms_event_id], NULL);
 
   pthread_mutex_destroy(&mutex);
   pthread_exit(NULL);
