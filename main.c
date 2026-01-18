@@ -840,7 +840,7 @@ int main() {
     init_projection_mat();
 
     srand((unsigned int)time(NULL));
-    camera = (Camera){.pos = {0.0, 0.0, 2.0}, .yaw = 1.0, .pitch = 1.0};
+    camera = (Camera){.pos = {0.0, 0.0, 0.3}, .yaw = 1.0, .pitch = 1.0};
 
     SquareMesh = get_square(10, 10, 200, 1);
     CubeMesh = get_cube(0, 0, 0, 0.2);
