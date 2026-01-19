@@ -1,6 +1,6 @@
 #include "utils/window_setup.h"
 #include <asm-generic/ioctls.h>
-#include <bits/pthreadtypes.h>
+// #include <bits/pthreadtypes.h>
 #include <math.h>
 #include <pthread.h>
 #include <stddef.h>
@@ -11,7 +11,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define NUM_THREADS 3
+#define NUM_THREADS 2
 #define SQUARE_TRIANGLE_COUNT 2
 #define CUBE_TRIANGLE_COUNT 12
 #define vec1 vecs[0]
@@ -43,8 +43,12 @@ typedef struct {
 
 typedef struct {
     Vec3 pos;
-    double yaw;
     double pitch;
+    double yaw;
+
+    Vec3 forward;
+    Vec3 right;
+    Vec3 up;
 } Camera;
 
 Mesh double_tris;
@@ -111,6 +115,7 @@ double fFovRad;
 Camera camera;
 double CAM_SENSITIVITY = 0.02f;
 Mat4 projection_matrix = {0};
+Mat4 LOOKAT_MTX = {0}; // lookat matrix
 
 // Convert to cartesian coordinates
 // Works with int. Idk if that bad
@@ -258,165 +263,6 @@ void draw_circle(int x, int y, int r) {
     }
 }
 
-void log_mouse_pos(int x, int y) {
-    FILE *debugFile = fopen("debug.txt", "a");
-    if (debugFile == NULL) {
-        perror("Failed to open debug file");
-        exit(1);
-    }
-
-    fprintf(debugFile, "MS-X %d, MS-Y %d\n", x, y);
-
-    fclose(debugFile);
-}
-
-void *read_user_input(void *thread_id) {
-    char c;
-    int pos_x = 5;
-    int pos_y = 5;
-
-    int rec_x = 4;
-
-    while (read(STDIN_FILENO, &c, 1) == 1) {
-        switch (c) {
-        case 'q':
-            STOP_READING = 0;
-
-        case 'n':
-            PAUSE_LOOP = 0;
-
-        case 'i':
-            camera.pos.z -= 0.05;
-            break;
-
-        case 'o':
-            camera.pos.z += 0.05;
-            break;
-
-        case 'a':
-            camera.pos.x -= 0.05;
-            break;
-
-        case 'd':
-            camera.pos.x += 0.05;
-            break;
-
-        case 'w':
-            // if (W_DEF >= 0) {
-            //   W_DEF += 1;
-            // }
-            // if (Term_Conf.cursor_pos_y > 1) {
-            //   pos_y--;
-            // }
-            camera.pos.y += 0.05;
-            break;
-            // printf("W pressed\n");
-
-        case 's':
-            camera.pos.y -= 0.05;
-            // if (W_DEF > 0) {
-            //   W_DEF -= 1;
-            // }
-            // if (Term_Conf.cursor_pos_y < Term_Conf.HEIGHT) {
-            //   pos_y++;
-            // }
-            break;
-            // printf("S pressed\n");
-
-            // case 'd':
-            //   if (Term_Conf.cursor_pos_x < Term_Conf.WIDTH) {
-            //     pos_x++;
-            //   }
-            //   break;
-            //
-            // case 'a':
-            //   if (Term_Conf.cursor_pos_x > 1) {
-            //     pos_x--;
-            //   }
-            //   break;
-        }
-
-        if (!STOP_READING) {
-            break;
-        }
-        // clear_screen();
-
-        // pthread_mutex_lock(&mutex);
-        // move_cursor(pos_x, pos_y);
-        // pthread_mutex_unlock(&mutex);
-
-        // usleep(100000);
-
-        // move_cursor_NO_REASSGN(1, 4);
-        // printf("X: %d Y: %d", Term_Conf.cursor_pos_x,
-        // Term_Conf.cursor_pos_y);
-        // move_cursor_NO_REASSGN(Term_Conf.cursor_pos_x,
-        // Term_Conf.cursor_pos_y);
-    }
-
-    pthread_exit(NULL);
-}
-
-void *read_ms_input(void *thread_id) {
-    char buf[32];
-    int nread;
-    int ms_initialized = 0;
-
-    while (STOP_READING) {
-        nread = read(STDIN_FILENO, buf, sizeof(buf) - 1);
-        if (nread <= 0) {
-            continue;
-        }
-        log_mouse_pos(99, 0);
-
-        buf[nread] = '\0';
-
-        if (buf[0] == '\x1b' && buf[1] == '[' && buf[2] == '<') {
-            int button, x, y;
-
-            if (sscanf(&buf[3], "%d;%d;%d", &button, &x, &y) == 3) {
-                pthread_mutex_lock(&mutex);
-                // ms init bool helps not count the first few mouse movements
-                // helps in avoiding the jutter at the start
-                if (!ms_initialized) {
-                    Term_Conf.ms_pos_x = x;
-                    Term_Conf.ms_pos_y = y;
-                    Term_Conf.MS_POS_DX = 0;
-                    Term_Conf.MS_POS_DY = 0;
-                    ms_initialized = 1;
-
-                } else {
-                    Term_Conf.MS_POS_DX = x - Term_Conf.ms_pos_x;
-                    Term_Conf.MS_POS_DY = y - Term_Conf.ms_pos_y;
-
-                    Term_Conf.ms_pos_x = x;
-                    Term_Conf.ms_pos_y = y;
-                }
-
-                camera.yaw += Term_Conf.MS_POS_DX * CAM_SENSITIVITY;
-                camera.pitch += Term_Conf.MS_POS_DY * CAM_SENSITIVITY;
-
-                // clamp so the cam doesnt flip upside down
-                // ±89° in radians
-                if (camera.pitch > 1.55f)
-                    camera.pitch = 1.55f;
-                if (camera.pitch < -1.55f)
-                    camera.pitch = -1.55f;
-
-                log_mouse_pos(Term_Conf.MS_POS_DX, Term_Conf.MS_POS_DY);
-                pthread_mutex_unlock(&mutex);
-
-                // Exit on right-click (button == 3)
-                if (button == 3) {
-                    break;
-                }
-            }
-        }
-    }
-
-    pthread_exit(NULL);
-}
-
 // Should NOT update the points in place
 // Return the new point to be drawn
 Vec4 rotate_xyz(Vec4 *v, double ax, double ay, double az) {
@@ -518,6 +364,13 @@ void normalise_triangle(Triangle *tri) {
     }
 }
 
+// mat mult like this replaces translating and rotating the triangles separately
+void apply_view_matrix(Triangle *tri) {
+    tri->vecs[0] = mat4_mult_vec4_2(&LOOKAT_MTX, &tri->vecs[0]);
+    tri->vecs[1] = mat4_mult_vec4_2(&LOOKAT_MTX, &tri->vecs[1]);
+    tri->vecs[2] = mat4_mult_vec4_2(&LOOKAT_MTX, &tri->vecs[2]);
+}
+
 void camera_movement(Triangle *tri) {
     for (int j = 0; j < 3; j++) {
         tri->vecs[j].x += camera.pos.x;
@@ -525,7 +378,7 @@ void camera_movement(Triangle *tri) {
         tri->vecs[j].z += camera.pos.z;
     }
 
-    // rotate_triangle(tri, -camera.yaw, -camera.pitch, 0.0);
+    rotate_triangle(tri, -camera.yaw, -camera.pitch, 0.0);
 }
 
 void dump_vertex_to_debug_file(Triangle *tri, int val) {
@@ -540,6 +393,65 @@ void dump_vertex_to_debug_file(Triangle *tri, int val) {
             tri->vecs[0].x, tri->vecs[0].y, tri->vecs[0].z, tri->vecs[0].w);
 
     fclose(debugFile);
+}
+
+Vec3 vec3_add(Vec3 a, Vec3 b) {
+    return (Vec3){a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+Vec3 vec3_sub(Vec3 a, Vec3 b) {
+    return (Vec3){a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+// scale vec3 by s
+Vec3 vec3_scale(Vec3 v, float s) { return (Vec3){v.x * s, v.y * s, v.z * s}; }
+
+float dot(Vec3 a, Vec3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+Vec3 cross(Vec3 a, Vec3 b) {
+    return (Vec3){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
+                  a.x * b.y - a.y * b.x};
+}
+
+Vec3 normalize(Vec3 v) {
+    float len = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (len == 0.0f)
+        return v;
+
+    return (Vec3){v.x / len, v.y / len, v.z / len};
+}
+
+// Update the View/LookAt matrix every animation loop
+// dont understand the math for now :/
+void update_camera_basis() {
+    Vec3 forward = {cosf(camera.pitch) * sinf(camera.yaw), sinf(camera.pitch),
+                    cosf(camera.pitch) * cosf(camera.yaw)};
+    camera.forward = normalize(forward);
+
+    Vec3 world_up = {0, 1, 0};
+
+    camera.right = normalize(cross(world_up, camera.forward));
+    camera.up = cross(camera.forward, camera.right);
+
+    LOOKAT_MTX.m[0][0] = camera.right.x;
+    LOOKAT_MTX.m[0][1] = camera.right.y;
+    LOOKAT_MTX.m[0][2] = camera.right.z;
+    LOOKAT_MTX.m[0][3] = -dot(camera.right, camera.pos);
+
+    LOOKAT_MTX.m[1][0] = camera.up.x;
+    LOOKAT_MTX.m[1][1] = camera.up.y;
+    LOOKAT_MTX.m[1][2] = camera.up.z;
+    LOOKAT_MTX.m[1][3] = -dot(camera.up, camera.pos);
+
+    LOOKAT_MTX.m[2][0] = -camera.forward.x;
+    LOOKAT_MTX.m[2][1] = -camera.forward.y;
+    LOOKAT_MTX.m[2][2] = -camera.forward.z;
+    LOOKAT_MTX.m[2][3] = dot(camera.forward, camera.pos);
+
+    LOOKAT_MTX.m[3][0] = 0;
+    LOOKAT_MTX.m[3][1] = 0;
+    LOOKAT_MTX.m[3][2] = 0;
+    LOOKAT_MTX.m[3][3] = 1;
 }
 
 void *animation(void *thread_id) {
@@ -580,6 +492,8 @@ void *animation(void *thread_id) {
         printf("Pitch: %f; Yaw: %f", camera.pitch, camera.yaw);
         pthread_mutex_unlock(&mutex);
 
+        update_camera_basis();
+
         // get rotated idiot
         for (int i = 0; i < CubeMesh->numTris; i++) {
             Triangle tri_updated = CubeMesh->tris[i];
@@ -593,7 +507,7 @@ void *animation(void *thread_id) {
             if (i == 0 && display_debug_info) {
                 dump_vertex_to_debug_file(&tri_updated, 0);
             }
-            rotate_triangle(&tri_updated, angle, angle * 0.2, angle * 0.33);
+            rotate_triangle(&tri_updated, 0, 0 * 0.2, 0 * 0.33);
             if (i == 0 && display_debug_info) {
                 move_cursor_NO_REASSGN(0, 7);
                 printf("rotated: %f, %f, %f, %f", tri_updated.vecs[0].x,
@@ -604,7 +518,9 @@ void *animation(void *thread_id) {
 
             // translate_triangle(&tri_updated, camera.pos.x, camera.pos.y,
             // camera.pos.z);
-            camera_movement(&tri_updated);
+            // camera_movement(&tri_updated);
+            apply_view_matrix(&tri_updated);
+
             if (i == 0 && display_debug_info) {
                 move_cursor_NO_REASSGN(0, 8);
                 printf("translated: %f, %f, %f, %f", tri_updated.vecs[0].x,
@@ -749,6 +665,196 @@ Mesh *get_cube(double x, double y, double z, double side) {
     return cube_mesh;
 }
 
+void log_mouse_pos(int x, int y) {
+    FILE *debugFile = fopen("debug.txt", "a");
+    if (debugFile == NULL) {
+        perror("Failed to open debug file");
+        exit(1);
+    }
+
+    fprintf(debugFile, "MS-X %d, MS-Y %d\n", x, y);
+
+    fclose(debugFile);
+}
+
+void *read_user_input(void *thread_id) {
+    char c;
+    int pos_x = 5;
+    int pos_y = 5;
+
+    int rec_x = 4;
+    float moveSpeed = 0.2f;
+    float pitch_yaw_sensitivity = 0.25f;
+
+    while (read(STDIN_FILENO, &c, 1) == 1) {
+        switch (c) {
+        case 'q':
+            STOP_READING = 0;
+            break;
+
+        case 'n':
+            PAUSE_LOOP = 0;
+            break;
+
+        case 'k':
+            camera.yaw += moveSpeed * pitch_yaw_sensitivity;
+            // camera.pitch -= 0.55;
+            break;
+
+        case 'l':
+            // camera.yaw += 0.55;
+            camera.pitch += moveSpeed * pitch_yaw_sensitivity;
+
+            if (camera.pitch > 1.55f)
+                camera.pitch = 1.55f;
+            if (camera.pitch < -1.55f)
+                camera.pitch = -1.55f;
+
+            break;
+
+        case 'i':
+            // camera.pos.z -= 0.05;
+            break;
+
+        case 'o':
+            // camera.pos.z += 0.05;
+            break;
+
+        case 'a':
+            // camera.pos.x -= 0.05;
+            camera.pos =
+                vec3_add(camera.pos, vec3_scale(camera.right, moveSpeed));
+
+            break;
+
+        case 'd':
+            camera.pos =
+                vec3_sub(camera.pos, vec3_scale(camera.right, moveSpeed));
+            // camera.pos.x += 0.05;
+            break;
+
+        case 'w':
+            // if (W_DEF >= 0) {
+            //   W_DEF += 1;
+            // }
+            // if (Term_Conf.cursor_pos_y > 1) {
+            //   pos_y--;
+            // }
+            // camera.pos.y += 0.05;
+            camera.pos =
+                vec3_sub(camera.pos, vec3_scale(camera.forward, moveSpeed));
+
+            break;
+            // printf("W pressed\n");
+
+        case 's':
+            camera.pos =
+                vec3_add(camera.pos, vec3_scale(camera.forward, moveSpeed));
+
+            // camera.pos.y -= 0.05;
+            // if (W_DEF > 0) {
+            //   W_DEF -= 1;
+            // }
+            // if (Term_Conf.cursor_pos_y < Term_Conf.HEIGHT) {
+            //   pos_y++;
+            // }
+            break;
+            // printf("S pressed\n");
+
+            // case 'd':
+            //   if (Term_Conf.cursor_pos_x < Term_Conf.WIDTH) {
+            //     pos_x++;
+            //   }
+            //   break;
+            //
+            // case 'a':
+            //   if (Term_Conf.cursor_pos_x > 1) {
+            //     pos_x--;
+            //   }
+            //   break;
+        }
+
+        if (!STOP_READING) {
+            break;
+        }
+        // clear_screen();
+
+        // pthread_mutex_lock(&mutex);
+        // move_cursor(pos_x, pos_y);
+        // pthread_mutex_unlock(&mutex);
+
+        // usleep(100000);
+
+        // move_cursor_NO_REASSGN(1, 4);
+        // printf("X: %d Y: %d", Term_Conf.cursor_pos_x,
+        // Term_Conf.cursor_pos_y);
+        // move_cursor_NO_REASSGN(Term_Conf.cursor_pos_x,
+        // Term_Conf.cursor_pos_y);
+    }
+
+    pthread_exit(NULL);
+}
+
+void *read_ms_input(void *thread_id) {
+    char buf[32];
+    int nread;
+    int ms_initialized = 0;
+
+    while (STOP_READING) {
+        nread = read(STDIN_FILENO, buf, sizeof(buf) - 1);
+        if (nread <= 0) {
+            continue;
+        }
+        log_mouse_pos(99, 0);
+
+        buf[nread] = '\0';
+
+        if (buf[0] == '\x1b' && buf[1] == '[' && buf[2] == '<') {
+            int button, x, y;
+
+            if (sscanf(&buf[3], "%d;%d;%d", &button, &x, &y) == 3) {
+                pthread_mutex_lock(&mutex);
+                // ms init bool helps not count the first few mouse movements
+                // helps in avoiding the jutter at the start
+                if (!ms_initialized) {
+                    Term_Conf.ms_pos_x = x;
+                    Term_Conf.ms_pos_y = y;
+                    Term_Conf.MS_POS_DX = 0;
+                    Term_Conf.MS_POS_DY = 0;
+                    ms_initialized = 1;
+
+                } else {
+                    Term_Conf.MS_POS_DX = x - Term_Conf.ms_pos_x;
+                    Term_Conf.MS_POS_DY = y - Term_Conf.ms_pos_y;
+
+                    Term_Conf.ms_pos_x = x;
+                    Term_Conf.ms_pos_y = y;
+                }
+
+                camera.yaw += Term_Conf.MS_POS_DX * CAM_SENSITIVITY;
+                camera.pitch += Term_Conf.MS_POS_DY * CAM_SENSITIVITY;
+
+                // clamp so the cam doesnt flip upside down
+                // ±89° in radians
+                if (camera.pitch > 1.55f)
+                    camera.pitch = 1.55f;
+                if (camera.pitch < -1.55f)
+                    camera.pitch = -1.55f;
+
+                log_mouse_pos(Term_Conf.MS_POS_DX, Term_Conf.MS_POS_DY);
+                pthread_mutex_unlock(&mutex);
+
+                // Exit on right-click (button == 3)
+                if (button == 3) {
+                    break;
+                }
+            }
+        }
+    }
+
+    pthread_exit(NULL);
+}
+
 void *foo(void *thread_id) { pthread_exit(NULL); }
 
 void init_projection_mat() {
@@ -840,10 +946,15 @@ int main() {
     init_projection_mat();
 
     srand((unsigned int)time(NULL));
-    camera = (Camera){.pos = {0.0, 0.0, 0.3}, .yaw = 1.0, .pitch = 1.0};
+    camera = (Camera){.pos = {0.0, 0.0, 0.3},
+                      .yaw = 0.0,
+                      .pitch = 0.0,
+                      .forward = 0.0,
+                      .right = 0.0,
+                      .up = 0.0};
 
     SquareMesh = get_square(10, 10, 200, 1);
-    CubeMesh = get_cube(0, 0, 0, 0.2);
+    CubeMesh = get_cube(0, 0, 0, 0.6);
     for (int i = 0; i < CubeMesh->numTris; i++) {
         printf("[%f, %f, %f, %f] ", CubeMesh->tris[i].vecs[0].x,
                CubeMesh->tris[i].vecs[0].x, CubeMesh->tris[i].vecs[0].z,
@@ -864,13 +975,13 @@ int main() {
     pthread_create(&threads[animation_id], NULL, animation,
                    (void *)animation_id);
 
-    long ms_event_id = 2;
-    pthread_create(&threads[ms_event_id], NULL, read_ms_input,
-                   (void *)ms_event_id);
+    // long ms_event_id = 2;
+    // pthread_create(&threads[ms_event_id], NULL, read_ms_input,
+    //                (void *)ms_event_id);
 
     pthread_join(threads[read_input_id], NULL);
     pthread_join(threads[animation_id], NULL);
-    pthread_join(threads[ms_event_id], NULL);
+    // pthread_join(threads[ms_event_id], NULL);
 
     pthread_mutex_destroy(&mutex);
     pthread_exit(NULL);
