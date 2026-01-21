@@ -116,6 +116,7 @@ Camera camera;
 double CAM_SENSITIVITY = 0.02f;
 Mat4 projection_matrix = {0};
 Mat4 LOOKAT_MTX = {0}; // lookat matrix
+float *zbuffer = NULL;
 
 // Convert to cartesian coordinates
 // Works with int. Idk if that bad
@@ -188,6 +189,61 @@ void draw_triangle(Triangle *tri) {
     DrawLine(tri->vecs[0].x, tri->vecs[0].y, tri->vecs[1].x, tri->vecs[1].y);
     DrawLine(tri->vecs[1].x, tri->vecs[1].y, tri->vecs[2].x, tri->vecs[2].y);
     DrawLine(tri->vecs[2].x, tri->vecs[2].y, tri->vecs[0].x, tri->vecs[0].y);
+}
+
+static inline float edge_function(float ax, float ay, float bx, float by,
+                                  float cx, float cy) {
+    return (cx - ax) * (by - ay) - (cy - ay) * (bx - ax);
+}
+
+void draw_triangle_fill(Triangle *tri) {
+    /* Convert NDC -> screen */
+    float x0 = (float)norm_to_screen_x(tri->vecs[0].x);
+    float y0 = (float)norm_to_screen_y(tri->vecs[0].y);
+    float x1 = (float)norm_to_screen_x(tri->vecs[1].x);
+    float y1 = (float)norm_to_screen_y(tri->vecs[1].y);
+    float x2 = (float)norm_to_screen_x(tri->vecs[2].x);
+    float y2 = (float)norm_to_screen_y(tri->vecs[2].y);
+
+    /* Bounding box (floor/ceil, NOT casts) */
+    int min_x = (int)floorf(fminf(fminf(x0, x1), x2));
+    int max_x = (int)ceilf(fmaxf(fmaxf(x0, x1), x2));
+    int min_y = (int)floorf(fminf(fminf(y0, y1), y2));
+    int max_y = (int)ceilf(fmaxf(fmaxf(y0, y1), y2));
+
+    /* Clamp to screen */
+    if (min_x < 0)
+        min_x = 0;
+    if (min_y < 0)
+        min_y = 0;
+    if (max_x >= Term_Conf.WIDTH)
+        max_x = Term_Conf.WIDTH - 1;
+    if (max_y >= Term_Conf.HEIGHT)
+        max_y = Term_Conf.HEIGHT - 1;
+
+    /* Triangle area */
+    float area = edge_function(x0, y0, x1, y1, x2, y2);
+    if (fabsf(area) < 1e-6f)
+        return;
+
+    /* Rasterize */
+    for (int y = min_y; y <= max_y; y++) {
+        for (int x = min_x; x <= max_x; x++) {
+
+            float px = (float)x + 0.5f;
+            float py = (float)y + 0.5f;
+
+            float w0 = edge_function(x1, y1, x2, y2, px, py);
+            float w1 = edge_function(x2, y2, x0, y0, px, py);
+            float w2 = edge_function(x0, y0, x1, y1, px, py);
+
+            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) ||
+                (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+                move_cursor_NO_REASSGN(x, y);
+                printf("*");
+            }
+        }
+    }
 }
 
 void init_thread() {
@@ -424,8 +480,11 @@ Vec3 normalize(Vec3 v) {
 // Update the View/LookAt matrix every animation loop
 // dont understand the math for now :/
 void update_camera_basis() {
-    Vec3 forward = {cosf(camera.pitch) * sinf(camera.yaw), sinf(camera.pitch),
-                    cosf(camera.pitch) * cosf(camera.yaw)};
+    Vec3 forward = {
+        cosf(camera.pitch) * sinf(camera.yaw), // x
+        sinf(camera.pitch),                    // y
+        cosf(camera.pitch) * cosf(camera.yaw)  // z
+    };
     camera.forward = normalize(forward);
 
     Vec3 world_up = {0, 1, 0};
@@ -452,6 +511,11 @@ void update_camera_basis() {
     LOOKAT_MTX.m[3][1] = 0;
     LOOKAT_MTX.m[3][2] = 0;
     LOOKAT_MTX.m[3][3] = 1;
+}
+
+void clear_zbuffer() {
+    for (int i = 0; i < Term_Conf.WIDTH * Term_Conf.HEIGHT; i++)
+        zbuffer[i] = 1e9f;
 }
 
 void *animation(void *thread_id) {
@@ -559,7 +623,7 @@ void *animation(void *thread_id) {
                 printf("w: %f", tri_updated.vecs[0].w);
             }
 
-            draw_triangle(&tri_updated);
+            draw_triangle_fill(&tri_updated);
         }
 
         angle += 0.01;
@@ -696,20 +760,32 @@ void *read_user_input(void *thread_id) {
             PAUSE_LOOP = 0;
             break;
 
-        case 'k':
-            camera.yaw += moveSpeed * pitch_yaw_sensitivity;
-            // camera.pitch -= 0.55;
-            break;
-
-        case 'l':
-            // camera.yaw += 0.55;
+        case 'j':
             camera.pitch += moveSpeed * pitch_yaw_sensitivity;
 
             if (camera.pitch > 1.55f)
                 camera.pitch = 1.55f;
             if (camera.pitch < -1.55f)
                 camera.pitch = -1.55f;
+            break;
 
+        case 'k':
+            camera.pitch -= moveSpeed * pitch_yaw_sensitivity;
+
+            if (camera.pitch > 1.55f)
+                camera.pitch = 1.55f;
+            if (camera.pitch < -1.55f)
+                camera.pitch = -1.55f;
+
+            // camera.pitch -= 0.55;
+            break;
+
+        case 'h':
+            camera.yaw -= moveSpeed * pitch_yaw_sensitivity;
+            break;
+
+        case 'l':
+            camera.yaw += moveSpeed * pitch_yaw_sensitivity;
             break;
 
         case 'i':
@@ -906,6 +982,16 @@ void debug_funcs() {
     return;
 }
 
+/* Icosahedron vertices */
+static const double PHI = 1.6180339887498948482;
+
+static const Vec4 V[] = {
+    {-1, PHI, 0, 1}, {1, PHI, 0, 1}, {-1, -PHI, 0, 1}, {1, -PHI, 0, 1},
+
+    {0, -1, PHI, 1}, {0, 1, PHI, 1}, {0, -1, -PHI, 1}, {0, 1, -PHI, 1},
+
+    {PHI, 0, -1, 1}, {PHI, 0, 1, 1}, {-PHI, 0, -1, 1}, {-PHI, 0, 1, 1}};
+
 int main() {
     int debug_funcs_bool = 1;
     int rows;
@@ -944,6 +1030,7 @@ int main() {
     }
 
     init_projection_mat();
+    zbuffer = malloc(sizeof(float) * Term_Conf.WIDTH * Term_Conf.HEIGHT);
 
     srand((unsigned int)time(NULL));
     camera = (Camera){.pos = {0.0, 0.0, 0.3},
@@ -991,6 +1078,8 @@ int main() {
 
     free(CubeMesh->tris);
     free(CubeMesh);
+
+    free(zbuffer);
 }
 
 // void animation_old() {
