@@ -197,6 +197,7 @@ static inline float edge_function(float ax, float ay, float bx, float by,
 }
 
 void draw_triangle_fill(Triangle *tri) {
+
     /* Convert NDC -> screen */
     float x0 = (float)norm_to_screen_x(tri->vecs[0].x);
     float y0 = (float)norm_to_screen_y(tri->vecs[0].y);
@@ -205,21 +206,21 @@ void draw_triangle_fill(Triangle *tri) {
     float x2 = (float)norm_to_screen_x(tri->vecs[2].x);
     float y2 = (float)norm_to_screen_y(tri->vecs[2].y);
 
-    /* Bounding box (floor/ceil, NOT casts) */
-    int min_x = (int)floorf(fminf(fminf(x0, x1), x2));
-    int max_x = (int)ceilf(fmaxf(fmaxf(x0, x1), x2));
-    int min_y = (int)floorf(fminf(fminf(y0, y1), y2));
-    int max_y = (int)ceilf(fmaxf(fmaxf(y0, y1), y2));
+    float z0 = tri->vecs[0].z;
+    float z1 = tri->vecs[1].z;
+    float z2 = tri->vecs[2].z;
 
-    /* Clamp to screen */
-    if (min_x < 0)
-        min_x = 0;
-    if (min_y < 0)
-        min_y = 0;
-    if (max_x >= Term_Conf.WIDTH)
-        max_x = Term_Conf.WIDTH - 1;
-    if (max_y >= Term_Conf.HEIGHT)
-        max_y = Term_Conf.HEIGHT - 1;
+    /* Bounding box */
+    int min_x = (int)floorf(fminf(fminf(x0, x1), x2));
+    int max_x = (int)ceilf (fmaxf(fmaxf(x0, x1), x2));
+    int min_y = (int)floorf(fminf(fminf(y0, y1), y2));
+    int max_y = (int)ceilf (fmaxf(fmaxf(y0, y1), y2));
+
+    /* Clamp */
+    if (min_x < 0) min_x = 0;
+    if (min_y < 0) min_y = 0;
+    if (max_x >= Term_Conf.WIDTH)  max_x = Term_Conf.WIDTH  - 1;
+    if (max_y >= Term_Conf.HEIGHT) max_y = Term_Conf.HEIGHT - 1;
 
     /* Triangle area */
     float area = edge_function(x0, y0, x1, y1, x2, y2);
@@ -239,8 +240,22 @@ void draw_triangle_fill(Triangle *tri) {
 
             if ((w0 >= 0 && w1 >= 0 && w2 >= 0) ||
                 (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
-                move_cursor_NO_REASSGN(x, y);
-                printf("*");
+
+                /* Barycentric */
+                float alpha = w0 / area;
+                float beta  = w1 / area;
+                float gamma = w2 / area;
+
+                /* Interpolate depth */
+                float z = alpha * z0 + beta * z1 + gamma * z2;
+
+                int idx = y * Term_Conf.WIDTH + x;
+
+                if (z < zbuffer[idx]) {
+                    zbuffer[idx] = z;
+                    move_cursor_NO_REASSGN(x, y);
+                    printf("*");
+                }
             }
         }
     }
@@ -427,6 +442,14 @@ void apply_view_matrix(Triangle *tri) {
     tri->vecs[2] = mat4_mult_vec4_2(&LOOKAT_MTX, &tri->vecs[2]);
 }
 
+int triangle_in_front(const Triangle *t) {
+    for (int i = 0; i < 3; i++) {
+        if (t->vecs[i].w > 0)
+            return 1;
+    }
+    return 0;
+}
+
 void camera_movement(Triangle *tri) {
     for (int j = 0; j < 3; j++) {
         tri->vecs[j].x += camera.pos.x;
@@ -533,6 +556,7 @@ void *animation(void *thread_id) {
 
         usleep(5000);
         clear_screen();
+		clear_zbuffer();
 
         if (display_debug_info) {
             pthread_mutex_lock(&mutex);
@@ -603,6 +627,10 @@ void *animation(void *thread_id) {
             if (i == 0 && display_debug_info) {
                 move_cursor_NO_REASSGN(0, 12);
                 printf("z: %f", tri_updated.vecs[0].z);
+            }
+
+            if (triangle_in_front(&tri_updated)) {
+                continue;
             }
 
             normalise_triangle(&tri_updated);
