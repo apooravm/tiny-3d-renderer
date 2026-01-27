@@ -118,6 +118,9 @@ Mat4 projection_matrix = {0};
 Mat4 LOOKAT_MTX = {0}; // lookat matrix
 float *zbuffer = NULL;
 
+int OBJECTS_COUNT = 1;
+Mesh *Objects = NULL;
+
 // Convert to cartesian coordinates
 // Works with int. Idk if that bad
 void conv_from_cart(int x, int y, int *ox, int *oy) {
@@ -185,45 +188,55 @@ void DrawLine(double x1, double y1, double x2, double y2) {
     }
 }
 
+void print_hex_color(const char *hex, const char *text) {
+    int r, g, b;
+    sscanf(hex, "#%02x%02x%02x", &r, &g, &b);
+    printf("\033[38;2;%d;%d;%dm%s\033[0m", r, g, b, text);
+}
+
 void draw_triangle(Triangle *tri) {
     DrawLine(tri->vecs[0].x, tri->vecs[0].y, tri->vecs[1].x, tri->vecs[1].y);
     DrawLine(tri->vecs[1].x, tri->vecs[1].y, tri->vecs[2].x, tri->vecs[2].y);
     DrawLine(tri->vecs[2].x, tri->vecs[2].y, tri->vecs[0].x, tri->vecs[0].y);
 }
 
-static inline float edge_function(float ax, float ay, float bx, float by,
-                                  float cx, float cy) {
-    return (cx - ax) * (by - ay) - (cy - ay) * (bx - ax);
+float edge_function(Vec3 *v1, Vec3 *v2, Vec3 *v3) {
+    return (v3->x - v1->x) * (v2->y - v1->y) -
+           (v3->y - v1->y) * (v2->x - v1->x);
 }
 
-void draw_triangle_fill(Triangle *tri) {
+void draw_triangle_fill(Triangle *tri, int c_idx) {
 
     /* Convert NDC -> screen */
-    float x0 = (float)norm_to_screen_x(tri->vecs[0].x);
-    float y0 = (float)norm_to_screen_y(tri->vecs[0].y);
-    float x1 = (float)norm_to_screen_x(tri->vecs[1].x);
-    float y1 = (float)norm_to_screen_y(tri->vecs[1].y);
-    float x2 = (float)norm_to_screen_x(tri->vecs[2].x);
-    float y2 = (float)norm_to_screen_y(tri->vecs[2].y);
+    Vec3 v1 = {(float)norm_to_screen_x(tri->vecs[0].x),
+               (float)norm_to_screen_y(tri->vecs[0].y), tri->vecs[0].z};
 
-    float z0 = tri->vecs[0].z;
-    float z1 = tri->vecs[1].z;
-    float z2 = tri->vecs[2].z;
+    Vec3 v2 = {(float)norm_to_screen_x(tri->vecs[1].x),
+               (float)norm_to_screen_y(tri->vecs[1].y), tri->vecs[1].z};
+
+    Vec3 v3 = {(float)norm_to_screen_x(tri->vecs[2].x),
+               (float)norm_to_screen_y(tri->vecs[2].y), tri->vecs[2].z};
+
+    Vec3 p = {0.0, 0.0, 0.0};
 
     /* Bounding box */
-    int min_x = (int)floorf(fminf(fminf(x0, x1), x2));
-    int max_x = (int)ceilf (fmaxf(fmaxf(x0, x1), x2));
-    int min_y = (int)floorf(fminf(fminf(y0, y1), y2));
-    int max_y = (int)ceilf (fmaxf(fmaxf(y0, y1), y2));
+    int min_x = (int)floorf(fminf(fminf(v1.x, v2.x), v3.x));
+    int max_x = (int)ceilf(fmaxf(fmaxf(v1.x, v2.x), v3.x));
+    int min_y = (int)floorf(fminf(fminf(v1.y, v2.y), v3.y));
+    int max_y = (int)ceilf(fmaxf(fmaxf(v1.y, v2.y), v3.y));
 
     /* Clamp */
-    if (min_x < 0) min_x = 0;
-    if (min_y < 0) min_y = 0;
-    if (max_x >= Term_Conf.WIDTH)  max_x = Term_Conf.WIDTH  - 1;
-    if (max_y >= Term_Conf.HEIGHT) max_y = Term_Conf.HEIGHT - 1;
+    if (min_x < 0)
+        min_x = 0;
+    if (min_y < 0)
+        min_y = 0;
+    if (max_x >= Term_Conf.WIDTH)
+        max_x = Term_Conf.WIDTH - 1;
+    if (max_y >= Term_Conf.HEIGHT)
+        max_y = Term_Conf.HEIGHT - 1;
 
     /* Triangle area */
-    float area = edge_function(x0, y0, x1, y1, x2, y2);
+    float area = edge_function(&v1, &v2, &v3);
     if (fabsf(area) < 1e-6f)
         return;
 
@@ -231,30 +244,69 @@ void draw_triangle_fill(Triangle *tri) {
     for (int y = min_y; y <= max_y; y++) {
         for (int x = min_x; x <= max_x; x++) {
 
-            float px = (float)x + 0.5f;
-            float py = (float)y + 0.5f;
+            p.x = (float)x + 1.0f;
+            p.y = (float)y + 1.0f;
 
-            float w0 = edge_function(x1, y1, x2, y2, px, py);
-            float w1 = edge_function(x2, y2, x0, y0, px, py);
-            float w2 = edge_function(x0, y0, x1, y1, px, py);
+            float w0 = edge_function(&v2, &v3, &p);
+            float w1 = edge_function(&v3, &v1, &p);
+            float w2 = edge_function(&v1, &v2, &p);
 
             if ((w0 >= 0 && w1 >= 0 && w2 >= 0) ||
                 (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
 
-                /* Barycentric */
-                float alpha = w0 / area;
-                float beta  = w1 / area;
-                float gamma = w2 / area;
+                // barycentric coords = normalizing edgefuncs = edge_func /
+                // total_area
+                float w0_norm = w0 / area;
+                float w1_norm = w1 / area;
+                float w2_norm = w2 / area;
 
                 /* Interpolate depth */
-                float z = alpha * z0 + beta * z1 + gamma * z2;
+                float z = w0_norm * v1.z + w1_norm * v2.z + w2_norm * v3.z;
+
+                // int r = (color >> 16) & 0xFF;
+                // int g = (color >> 8) & 0xFF;
+                // int b = color & 0xFF;
+
+                int ascii_idx = 9;
+                const char ascii_luminosity[] = {' ', '.', ':', '-', '=',
+                                                 '+', '*', '#', '%', '@'};
+
+                if (z <= 0.1) {
+                    ascii_idx = 0;
+                } else if (z <= 0.2) {
+                    ascii_idx = 1;
+                } else if (z <= 0.3) {
+                    ascii_idx = 2;
+                } else if (z <= 0.4) {
+                    ascii_idx = 3;
+                } else if (z <= 0.5) {
+                    ascii_idx = 4;
+                } else if (z <= 0.6) {
+                    ascii_idx = 5;
+                } else if (z <= 0.7) {
+                    ascii_idx = 6;
+                } else if (z <= 0.8) {
+                    ascii_idx = 7;
+                } else if (z <= 0.9) {
+                    ascii_idx = 8;
+                } else if (z <= 1.0) {
+                    ascii_idx = 9;
+                }
+
+				const char *colour = "";
+				if (c_idx == 0) {
+					colour = "#fff000";
+				} else {
+					colour = "#00ff00";
+				}
 
                 int idx = y * Term_Conf.WIDTH + x;
 
                 if (z < zbuffer[idx]) {
                     zbuffer[idx] = z;
                     move_cursor_NO_REASSGN(x, y);
-                    printf("*");
+                    print_hex_color(colour, "*");
+                    // printf("%c", ascii_luminosity[ascii_idx]);
                 }
             }
         }
@@ -544,7 +596,7 @@ void clear_zbuffer() {
 void *animation(void *thread_id) {
     // sinf and cosf work with degrees instead of radians
     double angle = 120.0f;
-    int display_debug_info = 0;
+    int display_debug_info = 1;
     // double angle_rad = angle * (M_PI / 180.0f);
     // double angle2 = 5 * (3.14159 / 180);
     // angle_rad = angle;
@@ -556,7 +608,7 @@ void *animation(void *thread_id) {
 
         usleep(5000);
         clear_screen();
-		clear_zbuffer();
+        clear_zbuffer();
 
         if (display_debug_info) {
             pthread_mutex_lock(&mutex);
@@ -582,76 +634,80 @@ void *animation(void *thread_id) {
 
         update_camera_basis();
 
-        // get rotated idiot
-        for (int i = 0; i < CubeMesh->numTris; i++) {
-            Triangle tri_updated = CubeMesh->tris[i];
-            if (i == 0 && display_debug_info) {
-                move_cursor_NO_REASSGN(0, 6);
-                printf("original: %f, %f, %f, %f", tri_updated.vecs[0].x,
-                       tri_updated.vecs[0].y, tri_updated.vecs[0].z,
-                       tri_updated.vecs[0].w);
+        // iterate over all objects
+        for (int m = 0; m < OBJECTS_COUNT; m++) {
+            Mesh *object = &Objects[m];
+            // get rotated idiot
+            for (int i = 0; i < object->numTris; i++) {
+                Triangle tri_updated = object->tris[i];
+                if (i == 0 && display_debug_info) {
+                    move_cursor_NO_REASSGN(0, 6);
+                    printf("original: %f, %f, %f, %f", tri_updated.vecs[0].x,
+                           tri_updated.vecs[0].y, tri_updated.vecs[0].z,
+                           tri_updated.vecs[0].w);
+                }
+
+                if (i == 0 && display_debug_info) {
+                    dump_vertex_to_debug_file(&tri_updated, 0);
+                }
+                rotate_triangle(&tri_updated, 0, 0 * 0.2, 0 * 0.33);
+                if (i == 0 && display_debug_info) {
+                    move_cursor_NO_REASSGN(0, 7);
+                    printf("rotated: %f, %f, %f, %f", tri_updated.vecs[0].x,
+                           tri_updated.vecs[0].y, tri_updated.vecs[0].z,
+                           tri_updated.vecs[0].w);
+                    dump_vertex_to_debug_file(&tri_updated, 1);
+                }
+
+                // translate_triangle(&tri_updated, camera.pos.x, camera.pos.y,
+                // camera.pos.z);
+                // camera_movement(&tri_updated);
+                apply_view_matrix(&tri_updated);
+
+                if (i == 0 && display_debug_info) {
+                    move_cursor_NO_REASSGN(0, 8);
+                    printf("view applied: %f, %f, %f, %f",
+                           tri_updated.vecs[0].x, tri_updated.vecs[0].y,
+                           tri_updated.vecs[0].z, tri_updated.vecs[0].w);
+                }
+
+                project_triangle(&tri_updated);
+                if (i == 0 && display_debug_info) {
+                    move_cursor_NO_REASSGN(0, 9);
+                    printf("projected: %f, %f, %f, %f", tri_updated.vecs[0].x,
+                           tri_updated.vecs[0].y, tri_updated.vecs[0].z,
+                           tri_updated.vecs[0].w);
+                }
+
+                if (i == 0 && display_debug_info) {
+                    move_cursor_NO_REASSGN(0, 12);
+                    printf("z: %f", tri_updated.vecs[0].z);
+                }
+
+                if (triangle_in_front(&tri_updated)) {
+                    continue;
+                }
+
+                normalise_triangle(&tri_updated);
+                if (i == 0 && display_debug_info) {
+                    move_cursor_NO_REASSGN(0, 10);
+                    printf("normalised: %f, %f, %f, %f", tri_updated.vecs[0].x,
+                           tri_updated.vecs[0].y, tri_updated.vecs[0].z,
+                           tri_updated.vecs[0].w);
+                }
+
+                if (i == 0 && display_debug_info) {
+                    move_cursor_NO_REASSGN(0, 16);
+                    printf("angle: %f", angle);
+                    move_cursor_NO_REASSGN(0, 17);
+                    printf("angle (radians): %f", angle);
+
+                    move_cursor_NO_REASSGN(0, 13);
+                    printf("w: %f", tri_updated.vecs[0].w);
+                }
+
+                draw_triangle_fill(&tri_updated, m);
             }
-
-            if (i == 0 && display_debug_info) {
-                dump_vertex_to_debug_file(&tri_updated, 0);
-            }
-            rotate_triangle(&tri_updated, 0, 0 * 0.2, 0 * 0.33);
-            if (i == 0 && display_debug_info) {
-                move_cursor_NO_REASSGN(0, 7);
-                printf("rotated: %f, %f, %f, %f", tri_updated.vecs[0].x,
-                       tri_updated.vecs[0].y, tri_updated.vecs[0].z,
-                       tri_updated.vecs[0].w);
-                dump_vertex_to_debug_file(&tri_updated, 1);
-            }
-
-            // translate_triangle(&tri_updated, camera.pos.x, camera.pos.y,
-            // camera.pos.z);
-            // camera_movement(&tri_updated);
-            apply_view_matrix(&tri_updated);
-
-            if (i == 0 && display_debug_info) {
-                move_cursor_NO_REASSGN(0, 8);
-                printf("translated: %f, %f, %f, %f", tri_updated.vecs[0].x,
-                       tri_updated.vecs[0].y, tri_updated.vecs[0].z,
-                       tri_updated.vecs[0].w);
-            }
-
-            project_triangle(&tri_updated);
-            if (i == 0 && display_debug_info) {
-                move_cursor_NO_REASSGN(0, 9);
-                printf("projected: %f, %f, %f, %f", tri_updated.vecs[0].x,
-                       tri_updated.vecs[0].y, tri_updated.vecs[0].z,
-                       tri_updated.vecs[0].w);
-            }
-
-            if (i == 0 && display_debug_info) {
-                move_cursor_NO_REASSGN(0, 12);
-                printf("z: %f", tri_updated.vecs[0].z);
-            }
-
-            if (triangle_in_front(&tri_updated)) {
-                continue;
-            }
-
-            normalise_triangle(&tri_updated);
-            if (i == 0 && display_debug_info) {
-                move_cursor_NO_REASSGN(0, 10);
-                printf("normalised: %f, %f, %f, %f", tri_updated.vecs[0].x,
-                       tri_updated.vecs[0].y, tri_updated.vecs[0].z,
-                       tri_updated.vecs[0].w);
-            }
-
-            if (i == 0 && display_debug_info) {
-                move_cursor_NO_REASSGN(0, 16);
-                printf("angle: %f", angle);
-                move_cursor_NO_REASSGN(0, 17);
-                printf("angle (radians): %f", angle);
-
-                move_cursor_NO_REASSGN(0, 13);
-                printf("w: %f", tri_updated.vecs[0].w);
-            }
-
-            draw_triangle_fill(&tri_updated);
         }
 
         angle += 0.01;
@@ -1069,7 +1125,7 @@ int main() {
                       .up = 0.0};
 
     SquareMesh = get_square(10, 10, 200, 1);
-    CubeMesh = get_cube(0, 0, 0, 0.6);
+    CubeMesh = get_cube(0, 0, 0, 0.2);
     for (int i = 0; i < CubeMesh->numTris; i++) {
         printf("[%f, %f, %f, %f] ", CubeMesh->tris[i].vecs[0].x,
                CubeMesh->tris[i].vecs[0].x, CubeMesh->tris[i].vecs[0].z,
@@ -1081,6 +1137,49 @@ int main() {
                CubeMesh->tris[i].vecs[2].x, CubeMesh->tris[i].vecs[2].z,
                CubeMesh->tris[i].vecs[2].w);
     }
+
+    Mesh *Single_tri2 = (Mesh *)malloc(sizeof(Mesh));
+    if (Single_tri2 == NULL) {
+        printf("Failed to allocate memory for single tri.\n");
+        return 1;
+    }
+
+    // Allocate memory for the triangles
+    Single_tri2->tris = (Triangle *)malloc(1 * sizeof(Triangle));
+    if (Single_tri2->tris == NULL) {
+        printf("Failed to allocate memory for Single Tri triangles.\n");
+        free(Single_tri2); // Free mesh if triangle allocation fails
+        return 1;
+    }
+
+    Single_tri2->numTris = 1;
+    Single_tri2->tris[0] = create_triangle((Vec4){0.0, 0.0, 0.4, W_DEF},
+                                           (Vec4){0.0, 1.0, 0.4, W_DEF},
+                                           (Vec4){1.0, 0.0, 0.4, W_DEF});
+
+    Mesh *Single_tri = (Mesh *)malloc(sizeof(Mesh));
+    if (Single_tri2 == NULL) {
+        printf("Failed to allocate memory for single tri.\n");
+        return 1;
+    }
+
+    // Allocate memory for the triangles
+    Single_tri->tris = (Triangle *)malloc(1 * sizeof(Triangle));
+    if (Single_tri->tris == NULL) {
+        printf("Failed to allocate memory for Single Tri triangles.\n");
+        free(Single_tri2); // Free mesh if triangle allocation fails
+        return 1;
+    }
+
+    Single_tri->numTris = 1;
+    Single_tri->tris[0] = create_triangle((Vec4){0.0, 0.0, 0.0, W_DEF},
+                                          (Vec4){0.0, 1.0, 0.0, W_DEF},
+                                          (Vec4){1.0, 0.0, 0.0, W_DEF});
+
+	OBJECTS_COUNT = 2;
+	Objects = malloc(sizeof(Mesh) * OBJECTS_COUNT);
+	Objects[0] = *Single_tri;
+	Objects[1] = *Single_tri2;
 
     long read_input_id = 0;
     pthread_create(&threads[read_input_id], NULL, read_user_input,
