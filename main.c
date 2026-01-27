@@ -106,7 +106,7 @@ double FOV_ANGLE = 90;
 double FOV;
 double Z_NORM;
 double fNear = 0.1f;
-double fFar = 1000.0f;
+double fFar = 10.0f;
 double fFov = 90.0f;
 double fFovRad;
 // double cam_x = 0;
@@ -240,6 +240,11 @@ void draw_triangle_fill(Triangle *tri, int c_idx) {
     if (fabsf(area) < 1e-6f)
         return;
 
+    // to correct for the perspective divide done in normalise triangle
+    float iz0 = 1.0f / v1.z;
+    float iz1 = 1.0f / v2.z;
+    float iz2 = 1.0f / v3.z;
+
     /* Rasterize */
     for (int y = min_y; y <= max_y; y++) {
         for (int x = min_x; x <= max_x; x++) {
@@ -261,11 +266,9 @@ void draw_triangle_fill(Triangle *tri, int c_idx) {
                 float w2_norm = w2 / area;
 
                 /* Interpolate depth */
-                float z = w0_norm * v1.z + w1_norm * v2.z + w2_norm * v3.z;
-
-                // int r = (color >> 16) & 0xFF;
-                // int g = (color >> 8) & 0xFF;
-                // int b = color & 0xFF;
+                float iz = w0_norm * iz0 + w1_norm * iz1 + w2_norm * iz2;
+                float z = 1.0f / iz;
+                z = iz;
 
                 int ascii_idx = 9;
                 const char ascii_luminosity[] = {' ', '.', ':', '-', '=',
@@ -293,20 +296,20 @@ void draw_triangle_fill(Triangle *tri, int c_idx) {
                     ascii_idx = 9;
                 }
 
-				const char *colour = "";
-				if (c_idx == 0) {
-					colour = "#fff000";
-				} else {
-					colour = "#00ff00";
-				}
+                const char *colour = "";
+                if (c_idx == 0) {
+                    colour = "#fff000";
+                } else {
+                    colour = "#00ff00";
+                }
 
                 int idx = y * Term_Conf.WIDTH + x;
 
                 if (z < zbuffer[idx]) {
                     zbuffer[idx] = z;
                     move_cursor_NO_REASSGN(x, y);
-                    print_hex_color(colour, "*");
-                    // printf("%c", ascii_luminosity[ascii_idx]);
+                    // print_hex_color(colour, "*");
+                    printf("%c", ascii_luminosity[ascii_idx]);
                 }
             }
         }
@@ -1176,10 +1179,11 @@ int main() {
                                           (Vec4){0.0, 1.0, 0.0, W_DEF},
                                           (Vec4){1.0, 0.0, 0.0, W_DEF});
 
-	OBJECTS_COUNT = 2;
-	Objects = malloc(sizeof(Mesh) * OBJECTS_COUNT);
-	Objects[0] = *Single_tri;
-	Objects[1] = *Single_tri2;
+    OBJECTS_COUNT = 1;
+    Objects = malloc(sizeof(Mesh) * OBJECTS_COUNT);
+	Objects[0] = *CubeMesh;
+    // Objects[0] = *Single_tri;
+    // Objects[1] = *Single_tri2;
 
     long read_input_id = 0;
     pthread_create(&threads[read_input_id], NULL, read_user_input,
@@ -1205,6 +1209,11 @@ int main() {
 
     free(CubeMesh->tris);
     free(CubeMesh);
+
+	free(Single_tri->tris);
+	free(Single_tri);
+	free(Single_tri2->tris);
+	free(Single_tri2);
 
     free(zbuffer);
 }
