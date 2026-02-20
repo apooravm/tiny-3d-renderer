@@ -136,7 +136,6 @@ void print_from_cart(double ix, double iy) {
 
     pthread_mutex_lock(&mutex);
     move_cursor_NO_REASSGN(ox, oy);
-    printf("#");
     pthread_mutex_unlock(&mutex);
 }
 
@@ -205,6 +204,8 @@ float edge_function(Vec3 *v1, Vec3 *v2, Vec3 *v3) {
            (v3->y - v1->y) * (v2->x - v1->x);
 }
 
+// so we can check if a point is beyong a line, using edge func
+// if that point is beyond 3 lines of a triangle -> its inside the triangle
 void draw_triangle_fill(Triangle *tri, int c_idx) {
 
     /* Convert NDC -> screen */
@@ -305,11 +306,14 @@ void draw_triangle_fill(Triangle *tri, int c_idx) {
 
                 int idx = y * Term_Conf.WIDTH + x;
 
+                // move_cursor_NO_REASSGN(x, y);
+                // printf("%c", ascii_luminosity[ascii_idx]);
+
                 if (z < zbuffer[idx]) {
                     zbuffer[idx] = z;
                     move_cursor_NO_REASSGN(x, y);
-                    // print_hex_color(colour, "*");
                     printf("%c", ascii_luminosity[ascii_idx]);
+                    // print_hex_color(colour, "*");
                 }
             }
         }
@@ -593,7 +597,8 @@ void update_camera_basis() {
 
 void clear_zbuffer() {
     for (int i = 0; i < Term_Conf.WIDTH * Term_Conf.HEIGHT; i++)
-        zbuffer[i] = 1e9f;
+        // zbuffer[i] = 1e9f;
+        zbuffer[i] = 9999;
 }
 
 void *animation(void *thread_id) {
@@ -709,6 +714,7 @@ void *animation(void *thread_id) {
                     printf("w: %f", tri_updated.vecs[0].w);
                 }
 
+                // draw_triangle(&tri_updated);
                 draw_triangle_fill(&tri_updated, m);
             }
         }
@@ -1181,7 +1187,7 @@ int main() {
 
     OBJECTS_COUNT = 1;
     Objects = malloc(sizeof(Mesh) * OBJECTS_COUNT);
-	Objects[0] = *CubeMesh;
+    Objects[0] = *CubeMesh;
     // Objects[0] = *Single_tri;
     // Objects[1] = *Single_tri2;
 
@@ -1210,10 +1216,10 @@ int main() {
     free(CubeMesh->tris);
     free(CubeMesh);
 
-	free(Single_tri->tris);
-	free(Single_tri);
-	free(Single_tri2->tris);
-	free(Single_tri2);
+    free(Single_tri->tris);
+    free(Single_tri);
+    free(Single_tri2->tris);
+    free(Single_tri2);
 
     free(zbuffer);
 }
